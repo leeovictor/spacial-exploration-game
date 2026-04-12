@@ -1,0 +1,10 @@
+# Project place file
+/factory-game.rbxl
+
+# Roblox Studio lock files
+/*.rbxlx.lock
+/*.rbxl.lock
+
+/Packages
+
+sourcemap.json

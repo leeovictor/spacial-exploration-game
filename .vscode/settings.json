@@ -1,0 +1,8 @@
+{
+  "stylua.styluaPath": "/home/leonardo/.cargo/bin/stylua",
+  "editor.formatOnSave": true,
+  "selene.run": "onType",
+  "selene.selenePath": "/home/leonardo/.cargo/bin/selene",
+  "selene.warnRoblox": true,
+  "luau-lsp.types.definitionFiles": {}
+}

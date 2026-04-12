@@ -1,0 +1,10 @@
+{
+  "servers": {
+    "Roblox_Studio": {
+      "command": "bash",
+      "args": [
+        "/home/leonardo/Projects/bmad-method-test/roblox-mcp-script-wrapper.sh"
+      ]
+    }
+  }
+}
