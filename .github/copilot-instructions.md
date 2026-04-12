@@ -41,6 +41,7 @@ wally.toml          # Wally dependencies manifest
 - **Server scripts**: Use `.server.luau` extension, placed in `src/server/`
 - **Shared modules**: Use `.luau` extension, placed in `src/shared/`
 - **Dependencies**: Manage via `wally.toml`, auto-synced to `ReplicatedStorage.Packages`
+- **React UI**: Keep UI entry files in `src/client/UI/`, client-only components in `src/client/components/`, and reusable hooks/helpers in `src/shared/`
 
 ### Code Style
 
@@ -48,6 +49,16 @@ wally.toml          # Wally dependencies manifest
 - Use **Luau typing** where applicable for better type safety
 - Module structure: return a single table or function from modules
 - Signal/event handling: Use the `signal` package from `ReplicatedStorage.Packages.signal`
+- For new interface work, prefer **React Lua** (`react` + `react-roblox`) instead of imperative ScreenGui assembly
+
+### React UI Conventions
+
+- Mount the client UI from `src/client/init.client.luau` with `ReactRoblox.createRoot()` into `PlayerGui`.
+- Prefer functional components and hooks over class components for new UI code.
+- Require packages from `ReplicatedStorage.Packages` using the Wally shims: `react`, `react-roblox`, and other installed modules.
+- Keep root screens and app composition in `src/client/UI/` and leaf widgets or HUD elements in `src/client/components/`.
+- Shared hooks that connect Roblox signals or replicated state to UI belong in `src/shared/hooks/`.
+- When UI needs game state updates, bridge Roblox events/signals into React state with hooks instead of manually mutating GuiObjects.
 
 ## Testing Workflow
 
