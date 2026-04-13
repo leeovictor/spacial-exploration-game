@@ -4,5 +4,7 @@
   "selene.run": "onType",
   "selene.selenePath": "/home/leonardo/.cargo/bin/selene",
   "selene.warnRoblox": true,
-  "luau-lsp.types.definitionFiles": {}
+  "luau-lsp.types.definitionFiles": {
+    "testez": "typedefs/testEZ.d.lua"
+  }
 }
