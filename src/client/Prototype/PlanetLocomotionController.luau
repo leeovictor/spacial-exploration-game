@@ -17,6 +17,31 @@ local GRAVITY_FORCE_NAME = "PlanetGravityForce"
 local ALIGN_ORIENTATION_NAME = "PlanetAlignOrientation"
 local MOVE_VELOCITY_NAME = "PlanetMoveVelocity"
 
+local function getPartSupportDistanceInRootSpace(rootPart: BasePart, part: BasePart): number
+	local relativeCFrame = rootPart.CFrame:ToObjectSpace(part.CFrame)
+	local halfSize = part.Size * 0.5
+	local axisX = relativeCFrame.XVector
+	local axisY = relativeCFrame.YVector
+	local axisZ = relativeCFrame.ZVector
+
+	return -relativeCFrame.Position.Y
+		+ math.abs(axisX.Y) * halfSize.X
+		+ math.abs(axisY.Y) * halfSize.Y
+		+ math.abs(axisZ.Y) * halfSize.Z
+end
+
+local function getCharacterSupportDistance(character: Model, rootPart: BasePart): number
+	local supportDistance = rootPart.Size.Y * 0.5
+
+	for _, descendant in character:GetDescendants() do
+		if descendant:IsA("BasePart") then
+			supportDistance = math.max(supportDistance, getPartSupportDistanceInRootSpace(rootPart, descendant))
+		end
+	end
+
+	return supportDistance
+end
+
 local function getInputAxis(positiveKey: Enum.KeyCode, negativeKey: Enum.KeyCode): number
 	local axis = 0
 	if UserInputService:IsKeyDown(positiveKey) then
@@ -69,6 +94,8 @@ function PlanetLocomotionController.attach(character: Model): (() -> ())?
 
 	humanoid.AutoRotate = false
 	humanoid.PlatformStand = true
+
+	local characterSupportDistance = getCharacterSupportDistance(character, rootPart)
 
 	local gravAttachment = Instance.new("Attachment")
 	gravAttachment.Name = GRAVITY_ATTACHMENT_NAME
@@ -135,6 +162,18 @@ function PlanetLocomotionController.attach(character: Model): (() -> ())?
 			gravForce.Force = gravDir * activePlanet.surfaceGravity * mass
 
 			local surfaceUp = -gravDir
+			local minSurfaceDistance = activePlanet.radius
+				+ characterSupportDistance
+				+ LocomotionConstants.groundedDistanceBuffer
+			if radialDistance < minSurfaceDistance then
+				local tangentVelocity = rootPart.AssemblyLinearVelocity - surfaceUp * rootPart.AssemblyLinearVelocity:Dot(surfaceUp)
+				local outwardVelocity = math.max(0, rootPart.AssemblyLinearVelocity:Dot(surfaceUp))
+				rootPart.CFrame = CFrame.new(activePlanet.center + surfaceUp * minSurfaceDistance) * (rootPart.CFrame - rootPart.Position)
+				rootPart.AssemblyLinearVelocity = tangentVelocity + surfaceUp * outwardVelocity
+				position = rootPart.Position
+				radialDistance = minSurfaceDistance
+			end
+
 			local moveDirection = getDesiredMoveDirection(surfaceUp)
 			local fallbackVector = Workspace.CurrentCamera and Workspace.CurrentCamera.CFrame.LookVector
 				or Vector3.new(0, 0, -1)
@@ -165,7 +204,7 @@ function PlanetLocomotionController.attach(character: Model): (() -> ())?
 				Vector2.new(desiredVelocity:Dot(tangentRight), desiredVelocity:Dot(tangentForward))
 
 			local surfaceOffset = radialDistance - activePlanet.radius
-			local groundedDistance = rootPart.Size.Y * 0.5 + LocomotionConstants.groundedDistanceBuffer
+			local groundedDistance = characterSupportDistance + LocomotionConstants.groundedDistanceBuffer
 			local isGrounded = surfaceOffset <= groundedDistance
 
 			if queuedJump and isGrounded then
