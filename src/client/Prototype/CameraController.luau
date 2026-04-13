@@ -6,20 +6,13 @@ local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
-local PlanetDefinitions =
-	require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Prototype"):WaitForChild("PlanetDefinitions")) :: any
-
-type PlanetDef = {
-	name: string,
-	center: Vector3,
-	radius: number,
-	surfaceGravity: number,
-	influenceRadius: number,
-}
+local PlanetMath = require(
+	ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Prototype"):WaitForChild("Math"):WaitForChild("PlanetMath")
+) :: any
 
 local CAMERA_DISTANCE = 18
 local MIN_CAMERA_DISTANCE = 8
-local MAX_CAMERA_DISTANCE = 30
+local MAX_CAMERA_DISTANCE = 300
 local CAMERA_FOCUS_HEIGHT = 4
 local CAMERA_SENSITIVITY = 0.0035
 local MIN_PITCH = math.rad(-75)
@@ -27,59 +20,13 @@ local MAX_PITCH = math.rad(55)
 local CAMERA_COLLISION_BUFFER = 0.75
 local RENDER_STEP_NAME = "PrototypePlanetCamera"
 
-local function projectOntoPlane(vector: Vector3, planeNormal: Vector3): Vector3
-	return vector - vector:Dot(planeNormal) * planeNormal
-end
-
-local function getActivePlanet(position: Vector3): PlanetDef?
-	local activePlanet: PlanetDef? = nil
-	local closestDistance = math.huge
-
-	for _, planet in PlanetDefinitions.planets do
-		local distance = (position - planet.center).Magnitude
-		if distance < planet.influenceRadius and distance < closestDistance then
-			closestDistance = distance
-			activePlanet = planet
-		end
-	end
-
-	return activePlanet
-end
-
-local function getSurfaceUp(position: Vector3): Vector3
-	local activePlanet = getActivePlanet(position)
-	if activePlanet == nil then
-		return Vector3.yAxis
-	end
-
-	local fromCenter = position - activePlanet.center
-	if fromCenter.Magnitude <= 0.001 then
-		return Vector3.yAxis
-	end
-
-	return fromCenter.Unit
-end
-
 local function getFallbackForward(surfaceUp: Vector3): Vector3
 	local currentCamera = Workspace.CurrentCamera
 	if currentCamera ~= nil then
-		local cameraForward = projectOntoPlane(currentCamera.CFrame.LookVector, surfaceUp)
-		if cameraForward.Magnitude > 0.01 then
-			return cameraForward.Unit
-		end
+		return PlanetMath.getPlanarDirection(surfaceUp, currentCamera.CFrame.LookVector, currentCamera.CFrame.UpVector)
 	end
 
-	local worldForward = projectOntoPlane(Vector3.new(0, 0, -1), surfaceUp)
-	if worldForward.Magnitude > 0.01 then
-		return worldForward.Unit
-	end
-
-	local axisFallback = surfaceUp:Cross(Vector3.xAxis)
-	if axisFallback.Magnitude <= 0.01 then
-		axisFallback = surfaceUp:Cross(Vector3.zAxis)
-	end
-
-	return axisFallback.Unit
+	return PlanetMath.getPlanarDirection(surfaceUp, Vector3.new(0, 0, -1))
 end
 
 local function rotateAroundAxis(vector: Vector3, axis: Vector3, angle: number): Vector3
@@ -110,7 +57,7 @@ function CameraController.start()
 		local previousCameraSubject = nil :: Instance?
 		local pitch = math.rad(20)
 		local cameraDistance = CAMERA_DISTANCE
-		local planarForward = getFallbackForward(getSurfaceUp(rootPart.Position))
+		local planarForward = getFallbackForward(PlanetMath.getSurfaceUp(rootPart.Position))
 
 		local wheelConn = UserInputService.InputChanged:Connect(
 			function(input: InputObject, gameProcessedEvent: boolean)
@@ -144,8 +91,8 @@ function CameraController.start()
 			UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
 			UserInputService.MouseIconEnabled = false
 
-			local surfaceUp = getSurfaceUp(rootPart.Position)
-			planarForward = projectOntoPlane(planarForward, surfaceUp)
+			local surfaceUp = PlanetMath.getSurfaceUp(rootPart.Position)
+			planarForward = PlanetMath.projectOntoPlane(planarForward, surfaceUp)
 			if planarForward.Magnitude <= 0.01 then
 				planarForward = getFallbackForward(surfaceUp)
 			else
@@ -155,7 +102,7 @@ function CameraController.start()
 			local mouseDelta = UserInputService:GetMouseDelta()
 			if mouseDelta.X ~= 0 then
 				planarForward = rotateAroundAxis(planarForward, surfaceUp, -mouseDelta.X * CAMERA_SENSITIVITY)
-				planarForward = projectOntoPlane(planarForward, surfaceUp).Unit
+				planarForward = PlanetMath.projectOntoPlane(planarForward, surfaceUp).Unit
 			end
 
 			pitch = math.clamp(pitch + mouseDelta.Y * CAMERA_SENSITIVITY, MIN_PITCH, MAX_PITCH)
