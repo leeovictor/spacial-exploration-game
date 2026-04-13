@@ -11,11 +11,21 @@ local PlanetMath = require(
 local LocomotionConstants = require(
 	ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Prototype"):WaitForChild("LocomotionConstants")
 ) :: any
+local LocomotionState =
+	require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Prototype"):WaitForChild("LocomotionState")) :: any
 
 local GRAVITY_ATTACHMENT_NAME = "PlanetGravityAttachment"
 local GRAVITY_FORCE_NAME = "PlanetGravityForce"
 local ALIGN_ORIENTATION_NAME = "PlanetAlignOrientation"
 local MOVE_VELOCITY_NAME = "PlanetMoveVelocity"
+
+local function setLocomotionState(character: Model, stateName: string)
+	if character:GetAttribute(LocomotionState.attributeName) == stateName then
+		return
+	end
+
+	character:SetAttribute(LocomotionState.attributeName, stateName)
+end
 
 local function getPartSupportDistanceInRootSpace(rootPart: BasePart, part: BasePart): number
 	local relativeCFrame = rootPart.CFrame:ToObjectSpace(part.CFrame)
@@ -94,6 +104,7 @@ function PlanetLocomotionController.attach(character: Model): (() -> ())?
 
 	humanoid.AutoRotate = false
 	humanoid.PlatformStand = true
+	setLocomotionState(character, LocomotionState.Idle)
 
 	local characterSupportDistance = getCharacterSupportDistance(character, rootPart)
 
@@ -142,6 +153,7 @@ function PlanetLocomotionController.attach(character: Model): (() -> ())?
 			gravForce.Force = Vector3.zero
 			moveVelocity.PlaneVelocity = Vector2.zero
 			moveVelocity.Enabled = false
+			setLocomotionState(character, LocomotionState.Idle)
 			return
 		end
 
@@ -155,6 +167,7 @@ function PlanetLocomotionController.attach(character: Model): (() -> ())?
 				gravForce.Force = Vector3.zero
 				moveVelocity.PlaneVelocity = Vector2.zero
 				moveVelocity.Enabled = false
+				setLocomotionState(character, LocomotionState.Idle)
 				return
 			end
 
@@ -166,9 +179,11 @@ function PlanetLocomotionController.attach(character: Model): (() -> ())?
 				+ characterSupportDistance
 				+ LocomotionConstants.groundedDistanceBuffer
 			if radialDistance < minSurfaceDistance then
-				local tangentVelocity = rootPart.AssemblyLinearVelocity - surfaceUp * rootPart.AssemblyLinearVelocity:Dot(surfaceUp)
+				local tangentVelocity = rootPart.AssemblyLinearVelocity
+					- surfaceUp * rootPart.AssemblyLinearVelocity:Dot(surfaceUp)
 				local outwardVelocity = math.max(0, rootPart.AssemblyLinearVelocity:Dot(surfaceUp))
-				rootPart.CFrame = CFrame.new(activePlanet.center + surfaceUp * minSurfaceDistance) * (rootPart.CFrame - rootPart.Position)
+				rootPart.CFrame = CFrame.new(activePlanet.center + surfaceUp * minSurfaceDistance)
+					* (rootPart.CFrame - rootPart.Position)
 				rootPart.AssemblyLinearVelocity = tangentVelocity + surfaceUp * outwardVelocity
 				position = rootPart.Position
 				radialDistance = minSurfaceDistance
@@ -206,6 +221,22 @@ function PlanetLocomotionController.attach(character: Model): (() -> ())?
 			local surfaceOffset = radialDistance - activePlanet.radius
 			local groundedDistance = characterSupportDistance + LocomotionConstants.groundedDistanceBuffer
 			local isGrounded = surfaceOffset <= groundedDistance
+			local locomotionState = LocomotionState.Idle
+
+			if isGrounded then
+				if desiredVelocity.Magnitude > 0.01 then
+					locomotionState = LocomotionState.Walk
+				end
+			else
+				local verticalSpeed = rootPart.AssemblyLinearVelocity:Dot(surfaceUp)
+				if verticalSpeed > 1 then
+					locomotionState = LocomotionState.Jump
+				else
+					locomotionState = LocomotionState.Fall
+				end
+			end
+
+			setLocomotionState(character, locomotionState)
 
 			if queuedJump and isGrounded then
 				local jumpSpeed = math.sqrt(2 * activePlanet.surfaceGravity * LocomotionConstants.jumpHeight)
@@ -216,6 +247,11 @@ function PlanetLocomotionController.attach(character: Model): (() -> ())?
 			gravForce.Force = Vector3.zero
 			moveVelocity.PlaneVelocity = Vector2.zero
 			moveVelocity.Enabled = false
+			if rootPart.AssemblyLinearVelocity.Magnitude > 1 then
+				setLocomotionState(character, LocomotionState.Fall)
+			else
+				setLocomotionState(character, LocomotionState.Idle)
+			end
 			queuedJump = false
 		end
 	end)
@@ -242,6 +278,8 @@ function PlanetLocomotionController.attach(character: Model): (() -> ())?
 		if alignOrient.Parent then
 			alignOrient:Destroy()
 		end
+
+		character:SetAttribute(LocomotionState.attributeName, nil)
 
 		humanoid.AutoRotate = true
 		humanoid.PlatformStand = false
