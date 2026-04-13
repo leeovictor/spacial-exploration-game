@@ -7,6 +7,7 @@ export type PlanetBuildOptions = {
 	parent: Instance?,
 	center: Vector3,
 	radius: number,
+	terrain: PlanetTerrainOptions?,
 	patchResolution: number?,
 	faceSubdivisions: number?,
 	anchored: boolean?,
@@ -23,6 +24,15 @@ export type PlanetBuildOptions = {
 	fallbackMaterial: Enum.Material?,
 	fallbackColor: Color3?,
 	fallbackTransparency: number?,
+}
+
+export type PlanetTerrainOptions = {
+	amplitude: number?,
+	frequency: number?,
+	octaves: number?,
+	persistence: number?,
+	lacunarity: number?,
+	seed: number?,
 }
 
 export type PlanetPatch = {
@@ -54,6 +64,10 @@ type PlanetPatchDescriptor = {
 local DEFAULT_PATCH_RESOLUTION = 12
 local DEFAULT_FACE_SUBDIVISIONS = 2
 local MAX_PATCH_RESOLUTION = 100
+local DEFAULT_TERRAIN_FREQUENCY = 2
+local DEFAULT_TERRAIN_OCTAVES = 4
+local DEFAULT_TERRAIN_PERSISTENCE = 0.5
+local DEFAULT_TERRAIN_LACUNARITY = 2
 
 local FACE_AXES = {
 	{ normal = Vector3.new(0, 0, 1), right = Vector3.new(1, 0, 0), up = Vector3.new(0, 1, 0) },
@@ -87,6 +101,88 @@ local function getSphereOffset(faceIndex: number, u: number, v: number, radius: 
 	local faceAxes = getFaceAxes(faceIndex)
 	local cubePoint = faceAxes.normal + faceAxes.right * u + faceAxes.up * v
 	return cubePoint.Unit * radius
+end
+
+local function getTerrainHeight(unitDirection: Vector3, terrainOptions: PlanetTerrainOptions?): number
+	if terrainOptions == nil then
+		return 0
+	end
+
+	local amplitude = if terrainOptions.amplitude ~= nil then terrainOptions.amplitude else 0
+	if amplitude == 0 then
+		return 0
+	end
+
+	local frequency = if terrainOptions.frequency ~= nil then terrainOptions.frequency else DEFAULT_TERRAIN_FREQUENCY
+	local octaves = if terrainOptions.octaves ~= nil then terrainOptions.octaves else DEFAULT_TERRAIN_OCTAVES
+	local persistence = if terrainOptions.persistence ~= nil
+		then terrainOptions.persistence
+		else DEFAULT_TERRAIN_PERSISTENCE
+	local lacunarity = if terrainOptions.lacunarity ~= nil
+		then terrainOptions.lacunarity
+		else DEFAULT_TERRAIN_LACUNARITY
+	local seed = if terrainOptions.seed ~= nil then terrainOptions.seed else 0
+
+	local noiseValue = 0
+	local currentAmplitude = 1
+	local currentFrequency = frequency
+	local amplitudeSum = 0
+
+	for _ = 1, octaves do
+		noiseValue += math.noise(
+			unitDirection.X * currentFrequency + seed * 0.173,
+			unitDirection.Y * currentFrequency + seed * 0.417,
+			unitDirection.Z * currentFrequency + seed * 0.691
+		) * currentAmplitude
+		amplitudeSum += currentAmplitude
+		currentAmplitude *= persistence
+		currentFrequency *= lacunarity
+	end
+
+	if amplitudeSum == 0 then
+		return 0
+	end
+
+	return noiseValue / amplitudeSum * amplitude
+end
+
+local function getDisplacedOffset(
+	faceIndex: number,
+	u: number,
+	v: number,
+	radius: number,
+	terrainOptions: PlanetTerrainOptions?
+): Vector3
+	local sphereOffset = getSphereOffset(faceIndex, u, v, radius)
+	local unitDirection = sphereOffset.Unit
+	local terrainHeight = getTerrainHeight(unitDirection, terrainOptions)
+
+	return unitDirection * (radius + terrainHeight)
+end
+
+local function getVertexNormalFromOffsets(gridOffsets: { Vector3 }, x: number, y: number, resolution: number): Vector3
+	local centerIndex = getGridIndex(x, y, resolution)
+	local centerOffset = gridOffsets[centerIndex]
+	local leftOffset = gridOffsets[getGridIndex(math.max(x - 1, 0), y, resolution)]
+	local rightOffset = gridOffsets[getGridIndex(math.min(x + 1, resolution), y, resolution)]
+	local downOffset = gridOffsets[getGridIndex(x, math.max(y - 1, 0), resolution)]
+	local upOffset = gridOffsets[getGridIndex(x, math.min(y + 1, resolution), resolution)]
+
+	local tangentU = rightOffset - leftOffset
+	local tangentV = upOffset - downOffset
+	local normal = tangentU:Cross(tangentV)
+
+	if normal.Magnitude <= 1e-5 then
+		return centerOffset.Unit
+	end
+
+	normal = normal.Unit
+
+	if normal:Dot(centerOffset.Unit) < 0 then
+		normal = -normal
+	end
+
+	return normal
 end
 
 local function createPatchDescriptors(radius: number, faceSubdivisions: number): { PlanetPatchDescriptor }
@@ -143,7 +239,8 @@ end
 local function buildEditablePatchMesh(
 	descriptor: PlanetPatchDescriptor,
 	radius: number,
-	resolution: number
+	resolution: number,
+	terrainOptions: PlanetTerrainOptions?
 ): EditableMesh
 	local editableMesh = AssetService:CreateEditableMesh()
 	if editableMesh == nil then
@@ -152,6 +249,7 @@ local function buildEditablePatchMesh(
 
 	local pointCount = (resolution + 1) * (resolution + 1)
 	local vertexIds: { number } = table.create(pointCount)
+	local gridOffsets: { Vector3 } = table.create(pointCount)
 	local normalIds: { number } = table.create(pointCount)
 	local uvIds: { number } = table.create(pointCount)
 
@@ -162,13 +260,21 @@ local function buildEditablePatchMesh(
 		for x = 0, resolution do
 			local uAlpha = x / resolution
 			local patchU = lerp(descriptor.minU, descriptor.maxU, uAlpha)
-			local sphereOffset = getSphereOffset(descriptor.faceIndex, patchU, patchV, radius)
-			local localPosition = sphereOffset - descriptor.centerOffset
+			local displacedOffset = getDisplacedOffset(descriptor.faceIndex, patchU, patchV, radius, terrainOptions)
+			local localPosition = displacedOffset - descriptor.centerOffset
 			local vertexIndex = getGridIndex(x, y, resolution)
 
 			vertexIds[vertexIndex] = editableMesh:AddVertex(localPosition)
-			normalIds[vertexIndex] = editableMesh:AddNormal(sphereOffset.Unit)
+			gridOffsets[vertexIndex] = displacedOffset
 			uvIds[vertexIndex] = editableMesh:AddUV(Vector2.new(uAlpha, vAlpha))
+		end
+	end
+
+	for y = 0, resolution do
+		for x = 0, resolution do
+			local vertexIndex = getGridIndex(x, y, resolution)
+			local normal = getVertexNormalFromOffsets(gridOffsets, x, y, resolution)
+			normalIds[vertexIndex] = editableMesh:AddNormal(normal)
 		end
 	end
 
@@ -264,6 +370,21 @@ function PlanetEditableMeshBuilder.createPlanet(options: PlanetBuildOptions): Pl
 	model:SetAttribute("PlanetPatchResolution", patchResolution)
 	model:SetAttribute("PlanetFaceSubdivisions", faceSubdivisions)
 
+	if options.terrain ~= nil then
+		model:SetAttribute(
+			"PlanetTerrainAmplitude",
+			if options.terrain.amplitude ~= nil then options.terrain.amplitude else 0
+		)
+		model:SetAttribute(
+			"PlanetTerrainFrequency",
+			if options.terrain.frequency ~= nil then options.terrain.frequency else DEFAULT_TERRAIN_FREQUENCY
+		)
+		model:SetAttribute(
+			"PlanetTerrainOctaves",
+			if options.terrain.octaves ~= nil then options.terrain.octaves else DEFAULT_TERRAIN_OCTAVES
+		)
+	end
+
 	local errors = {}
 	local patches = {}
 
@@ -283,7 +404,7 @@ function PlanetEditableMeshBuilder.createPlanet(options: PlanetBuildOptions): Pl
 
 	for _, descriptor in descriptors do
 		local success, resultOrMessage = pcall(function()
-			local editableMesh = buildEditablePatchMesh(descriptor, options.radius, patchResolution)
+			local editableMesh = buildEditablePatchMesh(descriptor, options.radius, patchResolution, options.terrain)
 			local meshPart = createMeshPartFromEditableMesh(editableMesh, descriptor, options)
 
 			meshPart.CFrame = CFrame.new(options.center + descriptor.centerOffset)
