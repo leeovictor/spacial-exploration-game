@@ -6,5 +6,8 @@
   "selene.warnRoblox": true,
   "luau-lsp.types.definitionFiles": {
     "testez": "typedefs/testEZ.d.lua"
+  },
+  "chat.tools.terminal.autoApprove": {
+    "selene": true
   }
 }
