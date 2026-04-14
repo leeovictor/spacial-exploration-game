@@ -1,9 +1,6 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local Packages = ReplicatedStorage:WaitForChild("Packages")
-local ReactModule = Packages:WaitForChild("react")
-
-local React = require(ReactModule)
+local React = require(ReplicatedStorage.Packages.react)
 
 local function HUD()
 	return React.createElement("Frame", {

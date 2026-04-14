@@ -3,11 +3,8 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
-local LocomotionConstants = require(
-	ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Prototype"):WaitForChild("LocomotionConstants")
-) :: any
-local LocomotionState =
-	require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Prototype"):WaitForChild("LocomotionState")) :: any
+local LocomotionConstants = require(ReplicatedStorage.Shared.Prototype.LocomotionConstants)
+local LocomotionState = require(ReplicatedStorage.Shared.Prototype.LocomotionState)
 
 type TrackMap = {
 	[string]: AnimationTrack,
@@ -181,8 +178,7 @@ function CharacterAnimationController.attach(character: Model): (() -> ())?
 	local stateConn = character:GetAttributeChangedSignal(LocomotionState.attributeName):Connect(updateAnimationState)
 	local heartbeatConn = RunService.Heartbeat:Connect(function()
 		if activeState == LocomotionState.Walk and activeTrack ~= nil then
-			local speedScale =
-				math.clamp(rootPart.AssemblyLinearVelocity.Magnitude / LocomotionConstants.walkSpeed, 0.85, 1.35)
+			local speedScale = rootPart.AssemblyLinearVelocity.Magnitude / LocomotionConstants.walkSpeed * 1.8
 			activeTrack:AdjustSpeed(speedScale)
 		end
 		if activeState == LocomotionState.Jump and activeTrack ~= nil and not activeTrack.IsPlaying then

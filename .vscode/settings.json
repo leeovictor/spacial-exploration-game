@@ -4,9 +4,6 @@
   "selene.run": "onType",
   "selene.selenePath": "/home/leonardo/.cargo/bin/selene",
   "selene.warnRoblox": true,
-  "luau-lsp.types.definitionFiles": {
-    "testez": "typedefs/testEZ.d.lua"
-  },
   "chat.tools.terminal.autoApprove": {
     "selene": true
   }

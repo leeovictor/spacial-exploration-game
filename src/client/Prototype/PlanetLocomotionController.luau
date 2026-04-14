@@ -5,19 +5,114 @@ local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
-local PlanetMath = require(
-	ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Prototype"):WaitForChild("Math"):WaitForChild("PlanetMath")
-) :: any
-local LocomotionConstants = require(
-	ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Prototype"):WaitForChild("LocomotionConstants")
-) :: any
-local LocomotionState =
-	require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Prototype"):WaitForChild("LocomotionState")) :: any
+local PlanetMath = require(ReplicatedStorage.Shared.Prototype.Math.PlanetMath)
+local LocomotionConstants = require(ReplicatedStorage.Shared.Prototype.LocomotionConstants)
+local LocomotionState = require(ReplicatedStorage.Shared.Prototype.LocomotionState)
 
 local GRAVITY_ATTACHMENT_NAME = "PlanetGravityAttachment"
 local GRAVITY_FORCE_NAME = "PlanetGravityForce"
 local ALIGN_ORIENTATION_NAME = "PlanetAlignOrientation"
 local MOVE_VELOCITY_NAME = "PlanetMoveVelocity"
+local GROUND_DEBUG_SPHERE_NAME = "PlanetGroundProbeDebug"
+
+local GROUND_NORMAL_THRESHOLD = 0.35
+local GROUND_PROBE_START_HEIGHT = 0
+local GROUNDED_VERTICAL_SPEED_THRESHOLD = 1
+
+type GroundProbeResult = {
+	isGrounded: boolean,
+	hasHit: boolean,
+	hasWalkableGround: boolean,
+	distance: number?,
+	origin: Vector3,
+	radius: number,
+}
+
+local function getGroundProbeRadius(rootPart: BasePart): number
+	return math.max(math.min(rootPart.Size.X, rootPart.Size.Z) * 0.35, 1.5)
+end
+
+local function createGroundDebugSphere(): Part?
+	if not RunService:IsStudio() then
+		return nil
+	end
+
+	local debugSphere = Instance.new("Part")
+	debugSphere.Name = GROUND_DEBUG_SPHERE_NAME
+	debugSphere.Shape = Enum.PartType.Ball
+	debugSphere.Anchored = true
+	debugSphere.CanCollide = false
+	debugSphere.CanQuery = false
+	debugSphere.CanTouch = false
+	debugSphere.CastShadow = false
+	debugSphere.Locked = true
+	debugSphere.Material = Enum.Material.ForceField
+	debugSphere.Transparency = 0.75
+	debugSphere.Size = Vector3.one
+	debugSphere.Parent = Workspace
+
+	return debugSphere
+end
+
+local function updateGroundDebugSphere(debugSphere: Part?, position: Vector3, radius: number, isGrounded: boolean)
+	if debugSphere == nil then
+		return
+	end
+
+	debugSphere.CFrame = CFrame.new(position)
+	debugSphere.Size = Vector3.new(radius * 2, radius * 2, radius * 2)
+	debugSphere.Color = if isGrounded then Color3.fromRGB(110, 255, 140) else Color3.fromRGB(255, 120, 120)
+	debugSphere.Transparency = if isGrounded then 0.55 else 0.8
+end
+
+local function getGroundProbeResult(
+	character: Model,
+	rootPart: BasePart,
+	surfaceUp: Vector3,
+	characterSupportDistance: number,
+	raycastParams: RaycastParams
+): GroundProbeResult
+	local probeRadius = getGroundProbeRadius(rootPart)
+	local probeOriginOffset = math.max(characterSupportDistance - probeRadius - GROUND_PROBE_START_HEIGHT, 0)
+	local probeOrigin = rootPart.Position - surfaceUp * probeOriginOffset
+	local probeDirection = -surfaceUp * LocomotionConstants.groundProbeLength
+	local probeResult = Workspace:Spherecast(probeOrigin, probeRadius, probeDirection, raycastParams)
+	local maxGroundDistance = GROUND_PROBE_START_HEIGHT + math.max(-LocomotionConstants.groundedDistanceBuffer, 0)
+
+	if probeResult == nil then
+		return {
+			isGrounded = false,
+			hasHit = false,
+			hasWalkableGround = false,
+			distance = nil,
+			origin = probeOrigin,
+			radius = probeRadius,
+		}
+	end
+
+	if probeResult.Instance:IsDescendantOf(character) then
+		return {
+			isGrounded = false,
+			hasHit = false,
+			hasWalkableGround = false,
+			distance = nil,
+			origin = probeOrigin,
+			radius = probeRadius,
+		}
+	end
+
+	local hasWalkableGround = probeResult.Normal:Dot(surfaceUp) >= GROUND_NORMAL_THRESHOLD
+	local isGrounded = probeResult.Distance <= maxGroundDistance and hasWalkableGround
+
+	return {
+		isGrounded = isGrounded,
+		hasHit = true,
+		hasWalkableGround = hasWalkableGround,
+		distance = probeResult.Distance,
+		origin = probeOrigin,
+		radius = probeRadius,
+	}
+end
 
 local function setLocomotionState(character: Model, stateName: string)
 	if character:GetAttribute(LocomotionState.attributeName) == stateName then
@@ -139,6 +234,13 @@ function PlanetLocomotionController.attach(character: Model): (() -> ())?
 	moveVelocity.Enabled = false
 	moveVelocity.Parent = rootPart
 
+	local groundRaycastParams = RaycastParams.new()
+	groundRaycastParams.FilterType = Enum.RaycastFilterType.Exclude
+	groundRaycastParams.FilterDescendantsInstances = { character }
+	groundRaycastParams.IgnoreWater = true
+
+	local groundDebugSphere = createGroundDebugSphere()
+
 	local queuedJump = false
 	local jumpConn = UserInputService.JumpRequest:Connect(function()
 		queuedJump = true
@@ -175,9 +277,7 @@ function PlanetLocomotionController.attach(character: Model): (() -> ())?
 			gravForce.Force = gravDir * activePlanet.surfaceGravity * mass
 
 			local surfaceUp = -gravDir
-			local minSurfaceDistance = activePlanet.radius
-				+ characterSupportDistance
-				+ LocomotionConstants.groundedDistanceBuffer
+			local minSurfaceDistance = activePlanet.radius + characterSupportDistance
 			if radialDistance < minSurfaceDistance then
 				local tangentVelocity = rootPart.AssemblyLinearVelocity
 					- surfaceUp * rootPart.AssemblyLinearVelocity:Dot(surfaceUp)
@@ -218,17 +318,21 @@ function PlanetLocomotionController.attach(character: Model): (() -> ())?
 			moveVelocity.PlaneVelocity =
 				Vector2.new(desiredVelocity:Dot(tangentRight), desiredVelocity:Dot(tangentForward))
 
-			local surfaceOffset = radialDistance - activePlanet.radius
-			local groundedDistance = characterSupportDistance + LocomotionConstants.groundedDistanceBuffer
-			local isGrounded = surfaceOffset <= groundedDistance
+			local groundProbe =
+				getGroundProbeResult(character, rootPart, surfaceUp, characterSupportDistance, groundRaycastParams)
+			updateGroundDebugSphere(groundDebugSphere, groundProbe.origin, groundProbe.radius, groundProbe.isGrounded)
 			local locomotionState = LocomotionState.Idle
+			local verticalSpeed = rootPart.AssemblyLinearVelocity:Dot(surfaceUp)
+			local hasGroundedStateFromProbe = groundProbe.isGrounded
+				or (groundProbe.hasWalkableGround and verticalSpeed <= GROUNDED_VERTICAL_SPEED_THRESHOLD)
+			local canJumpFromProbe = groundProbe.hasWalkableGround
+				and verticalSpeed <= GROUNDED_VERTICAL_SPEED_THRESHOLD
 
-			if isGrounded then
+			if hasGroundedStateFromProbe then
 				if desiredVelocity.Magnitude > 0.01 then
 					locomotionState = LocomotionState.Walk
 				end
 			else
-				local verticalSpeed = rootPart.AssemblyLinearVelocity:Dot(surfaceUp)
 				if verticalSpeed > 1 then
 					locomotionState = LocomotionState.Jump
 				else
@@ -238,7 +342,7 @@ function PlanetLocomotionController.attach(character: Model): (() -> ())?
 
 			setLocomotionState(character, locomotionState)
 
-			if queuedJump and isGrounded then
+			if queuedJump and canJumpFromProbe then
 				local jumpSpeed = math.sqrt(2 * activePlanet.surfaceGravity * LocomotionConstants.jumpHeight)
 				rootPart:ApplyImpulse(surfaceUp * mass * jumpSpeed)
 			end
@@ -247,6 +351,7 @@ function PlanetLocomotionController.attach(character: Model): (() -> ())?
 			gravForce.Force = Vector3.zero
 			moveVelocity.PlaneVelocity = Vector2.zero
 			moveVelocity.Enabled = false
+			updateGroundDebugSphere(groundDebugSphere, rootPart.Position, getGroundProbeRadius(rootPart), false)
 			if rootPart.AssemblyLinearVelocity.Magnitude > 1 then
 				setLocomotionState(character, LocomotionState.Fall)
 			else
@@ -277,6 +382,9 @@ function PlanetLocomotionController.attach(character: Model): (() -> ())?
 		end
 		if alignOrient.Parent then
 			alignOrient:Destroy()
+		end
+		if groundDebugSphere ~= nil and groundDebugSphere.Parent then
+			groundDebugSphere:Destroy()
 		end
 
 		character:SetAttribute(LocomotionState.attributeName, nil)

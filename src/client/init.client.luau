@@ -1,21 +1,12 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local Packages = ReplicatedStorage:WaitForChild("Packages")
-local ReactModule = Packages:WaitForChild("react")
-local ReactRobloxModule = Packages:WaitForChild("react-roblox")
-local PlanetManualTestBootstrapModule = script:WaitForChild("PlanetManualTestBootstrap")
-local CameraControllerModule = script:WaitForChild("Prototype"):WaitForChild("CameraController")
-local PlayerControllerModule = script:WaitForChild("Prototype"):WaitForChild("PlayerController")
-local UIRoot = script:WaitForChild("UI")
-local AppModule = UIRoot:WaitForChild("App")
-
-local React = require(ReactModule :: any)
-local ReactRoblox = require(ReactRobloxModule :: any)
-local PlanetManualTestBootstrap = require(PlanetManualTestBootstrapModule :: any)
-local CameraController = require(CameraControllerModule :: any)
-local PlayerController = require(PlayerControllerModule :: any)
-local App = require(AppModule :: any)
+local React = require(ReplicatedStorage.Packages.react)
+local ReactRoblox = require(ReplicatedStorage.Packages["react-roblox"])
+local PlanetManualTestBootstrap = require(script.PlanetManualTestBootstrap)
+local CameraController = require(script.Prototype.CameraController)
+local PlayerController = require(script.Prototype.PlayerController)
+local App = require(script.UI.App)
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")

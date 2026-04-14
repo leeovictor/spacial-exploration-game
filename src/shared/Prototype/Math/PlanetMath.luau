@@ -2,8 +2,7 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local PlanetDefinitions =
-	require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Prototype"):WaitForChild("PlanetDefinitions")) :: any
+local PlanetDefinitions = require(ReplicatedStorage.Shared.Prototype.PlanetDefinitions)
 
 type PlanetDef = {
 	name: string,

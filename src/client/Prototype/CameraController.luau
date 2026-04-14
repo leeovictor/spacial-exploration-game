@@ -6,14 +6,12 @@ local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
-local PlanetMath = require(
-	ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Prototype"):WaitForChild("Math"):WaitForChild("PlanetMath")
-) :: any
+local PlanetMath = require(ReplicatedStorage.Shared.Prototype.Math.PlanetMath)
 
 local CAMERA_DISTANCE = 18
 local MIN_CAMERA_DISTANCE = 8
 local MAX_CAMERA_DISTANCE = 300
-local CAMERA_FOCUS_HEIGHT = 4
+local CAMERA_FOCUS_HEIGHT = 2
 local CAMERA_SENSITIVITY = 0.0035
 local MIN_PITCH = math.rad(-75)
 local MAX_PITCH = math.rad(55)

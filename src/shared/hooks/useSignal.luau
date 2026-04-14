@@ -1,9 +1,6 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local Packages = ReplicatedStorage:WaitForChild("Packages")
-local ReactModule = Packages:WaitForChild("react")
-
-local React = require(ReactModule :: ModuleScript)
+local React = require(ReplicatedStorage.Packages.react)
 
 type ConnectionLike = {
 	Disconnect: (self: ConnectionLike) -> (),
@@ -23,7 +20,7 @@ local function useSignal(signal: SignalLike, initialValue: any, mapValue: ((...a
 				return
 			end
 
-			setValue((... :: any))
+			setValue(... :: any)
 		end)
 
 		return function()

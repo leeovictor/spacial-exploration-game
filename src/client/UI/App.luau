@@ -1,12 +1,6 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-
-local Packages = ReplicatedStorage:WaitForChild("Packages")
-local ReactModule = Packages:WaitForChild("react")
-local Components = script.Parent.Parent:WaitForChild("components")
-local HUDModule = Components:WaitForChild("HUD")
-
-local React = require(ReactModule)
-local HUD = require(HUDModule)
+local React = require(ReplicatedStorage.Packages.react)
+local HUD = require(script.Parent.Parent.components.HUD)
 
 local function App()
 	return React.createElement("ScreenGui", {
