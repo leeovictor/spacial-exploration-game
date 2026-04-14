@@ -13,8 +13,8 @@ local MIN_CAMERA_DISTANCE = 8
 local MAX_CAMERA_DISTANCE = 300
 local CAMERA_FOCUS_HEIGHT = 2
 local CAMERA_SENSITIVITY = 0.0035
-local MIN_PITCH = math.rad(-75)
-local MAX_PITCH = math.rad(55)
+local MIN_PITCH = math.rad(-85)
+local MAX_PITCH = math.rad(85)
 local CAMERA_COLLISION_BUFFER = 0.75
 local RENDER_STEP_NAME = "PrototypePlanetCamera"
 
