@@ -4,21 +4,21 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 local PlanetEditableMeshBuilder = require(ReplicatedStorage.Shared.PlanetEditableMeshBuilder)
 
-local TEST_PLANET_NAME = "ClientManualTestPlanet"
+local PlanetDefinitions = require(ReplicatedStorage.Shared.Prototype.PlanetDefinitions)
 
 local PlanetManualTestBootstrap = {}
 
-function PlanetManualTestBootstrap.run()
-	local existingPlanet = Workspace:FindFirstChild(TEST_PLANET_NAME)
+local function createPlanetFromDefinition(planetDefinition)
+	local existingPlanet = Workspace:FindFirstChild(planetDefinition.name)
 	if existingPlanet ~= nil then
 		existingPlanet:Destroy()
 	end
 
 	local result = PlanetEditableMeshBuilder.createPlanet({
-		name = TEST_PLANET_NAME,
+		name = planetDefinition.name,
 		parent = Workspace,
-		center = Vector3.new(0, -320, 0),
-		radius = 300,
+		center = planetDefinition.center,
+		radius = planetDefinition.radius,
 		patchResolution = 64,
 		faceSubdivisions = 1,
 		anchored = true,
@@ -49,6 +49,16 @@ function PlanetManualTestBootstrap.run()
 	end
 
 	return result
+end
+
+function PlanetManualTestBootstrap.run()
+	local results = table.create(#PlanetDefinitions.planets)
+
+	for _, planetDefinition in PlanetDefinitions.planets do
+		table.insert(results, createPlanetFromDefinition(planetDefinition))
+	end
+
+	return results
 end
 
 return PlanetManualTestBootstrap

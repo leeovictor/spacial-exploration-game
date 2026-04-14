@@ -1,54 +1,106 @@
 --!strict
 
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
+
+local LocomotionConstants = require(ReplicatedStorage.Shared.Prototype.LocomotionConstants)
 local CharacterAnimationController = require(script.Parent.CharacterAnimationController)
+local FlyController = require(script.Parent.FlyController)
 local PlanetLocomotionController = require(script.Parent.PlanetLocomotionController)
 
 local PlayerController = {}
 
+type MovementMode = "planet" | "fly"
+
 function PlayerController.start()
 	local player = Players.LocalPlayer
-	local activeCleanup: (() -> ())? = nil
+	local activeCharacter: Model? = nil
+	local activeAnimationCleanup: (() -> ())? = nil
+	local activeMovementCleanup: (() -> ())? = nil
+	local activeMovementMode: MovementMode = "planet"
+	local lastSpaceTapAt = 0
 
-	local function runCleanup(callbacks: { (() -> ())? }): () -> ()
-		local cleaned = false
+	local function cleanupMovementController()
+		if activeMovementCleanup ~= nil then
+			activeMovementCleanup()
+			activeMovementCleanup = nil
+		end
+	end
 
-		return function()
-			if cleaned then
-				return
-			end
-			cleaned = true
+	local function cleanupAllControllers()
+		cleanupMovementController()
 
-			for _, callback in callbacks do
-				if callback ~= nil then
-					callback()
-				end
-			end
+		if activeAnimationCleanup ~= nil then
+			activeAnimationCleanup()
+			activeAnimationCleanup = nil
+		end
+	end
+
+	local function applyMovementMode(mode: MovementMode)
+		activeMovementMode = mode
+		cleanupMovementController()
+
+		if activeCharacter == nil then
+			return
+		end
+
+		if mode == "fly" then
+			activeMovementCleanup = FlyController.attach(activeCharacter)
+		else
+			activeMovementCleanup = PlanetLocomotionController.attach(activeCharacter)
 		end
 	end
 
 	local function onCharacterAdded(character: Model)
-		if activeCleanup ~= nil then
-			activeCleanup()
-			activeCleanup = nil
-		end
+		cleanupAllControllers()
+		activeCharacter = character
+		activeMovementMode = "planet"
+		lastSpaceTapAt = 0
 
-		activeCleanup = runCleanup({
-			PlanetLocomotionController.attach(character),
-			CharacterAnimationController.attach(character),
-		})
+		activeAnimationCleanup = CharacterAnimationController.attach(character)
+		applyMovementMode(activeMovementMode)
 	end
 
 	local function onCharacterRemoving()
-		if activeCleanup ~= nil then
-			activeCleanup()
-			activeCleanup = nil
-		end
+		cleanupAllControllers()
+		activeCharacter = nil
+		activeMovementMode = "planet"
+		lastSpaceTapAt = 0
 	end
 
 	if player.Character ~= nil then
 		onCharacterAdded(player.Character)
 	end
+
+	UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessedEvent: boolean)
+		if gameProcessedEvent then
+			return
+		end
+
+		if input.UserInputType ~= Enum.UserInputType.Keyboard or input.KeyCode ~= Enum.KeyCode.Space then
+			return
+		end
+
+		if activeCharacter == nil then
+			return
+		end
+
+		local humanoid = activeCharacter:FindFirstChildOfClass("Humanoid")
+		if humanoid == nil or humanoid.Health <= 0 then
+			return
+		end
+
+		local now = os.clock()
+		if now - lastSpaceTapAt <= LocomotionConstants.flyToggleDoubleTapWindow then
+			local nextMode: MovementMode = if activeMovementMode == "planet" then "fly" else "planet"
+			applyMovementMode(nextMode)
+			lastSpaceTapAt = 0
+			return
+		end
+
+		lastSpaceTapAt = now
+	end)
 
 	player.CharacterAdded:Connect(onCharacterAdded)
 	player.CharacterRemoving:Connect(onCharacterRemoving)

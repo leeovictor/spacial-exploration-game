@@ -13,8 +13,8 @@ local PlanetDefinitions = {}
 local planets: { PlanetDef } = {
 	{
 		name = "PlanetA",
-		center = Vector3.new(0, -320, 0),
-		radius = 300,
+		center = Vector3.new(0, -220, 0),
+		radius = 200,
 		surfaceGravity = 196.2, -- matches default Roblox Workspace.Gravity for familiar feel
 		influenceRadius = 900,
 	},
