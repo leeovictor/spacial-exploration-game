@@ -110,12 +110,13 @@ function CruiseController.attach(character: Model, options: CruiseControllerOpti
 
 		local position = rootPart.Position
 		local mass = rootPart.AssemblyMass
-		local activePlanet = PlanetMath.getActivePlanet(position)
+		local currentTime = PlanetMath.getMotionTime()
+		local activePlanet = PlanetMath.getActivePlanet(position, currentTime)
 		local surfaceUp = Vector3.yAxis
 		local inheritedVelocity = Vector3.zero
 
 		if activePlanet ~= nil then
-			local currentPlanetCenter = PlanetMath.getPlanetCenter(activePlanet)
+			local currentPlanetCenter = PlanetMath.getPlanetCenter(activePlanet, currentTime)
 			if lastPlanetName == activePlanet.name and lastPlanetCenter ~= nil then
 				MovementControllerUtils.translateCharacterWithPlanet(rootPart, currentPlanetCenter - lastPlanetCenter)
 				position = rootPart.Position
@@ -127,9 +128,9 @@ function CruiseController.attach(character: Model, options: CruiseControllerOpti
 				surfaceUp = -gravDir
 				local radialDistance = math.max((position - currentPlanetCenter).Magnitude, activePlanet.radius)
 				local gravityScale = (activePlanet.radius * activePlanet.radius) / (radialDistance * radialDistance)
-				local gravityAcceleration = activePlanet.surfaceGravity * gravityScale
+				local gravityAcceleration = activePlanet.gravity * gravityScale
 				gravForce.Force = gravDir * gravityAcceleration * mass
-				inheritedVelocity = PlanetMath.getRotationalSurfaceVelocity(activePlanet, position)
+				inheritedVelocity = PlanetMath.getRotationalSurfaceVelocity(activePlanet, position, currentTime)
 
 				local characterSupportDistance =
 					MovementControllerUtils.getCharacterSupportDistance(characterBaseParts, rootPart, surfaceUp)

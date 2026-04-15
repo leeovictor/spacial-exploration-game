@@ -1,21 +1,45 @@
 --!strict
 
-export type PlanetDef = {
-	name: string,
-	center: Vector3,
-	radius: number,
-	surfaceGravity: number, -- studs/s², applied as acceleration magnitude
-	influenceRadius: number, -- distance from center within which gravity applies
+export type RotationDirection = "clockwise" | "counterclockwise"
+
+export type RotationDef = {
 	rotationAxis: Vector3,
 	angularSpeed: number, -- radians/s around rotationAxis in world space
-	orbitCenter: Vector3?,
+	direction: RotationDirection,
+}
+
+export type TranslationDef = {
+	orbitalSpeed: number, -- radians/s around the system star position
 	orbitAxis: Vector3?,
-	orbitAngularSpeed: number?, -- radians/s around orbitCenter in world space
+	direction: RotationDirection,
+}
+
+export type StarDef = {
+	name: string,
+	position: Vector3,
+	radius: number,
+	color: Color3,
+}
+
+export type PlanetDef = {
+	name: string,
+	gravity: number, -- studs/s², applied as acceleration magnitude
+	influenceRadius: number, -- distance from center within which gravity applies
+	distanceFromStar: number,
+	radius: number,
+	rotationDef: RotationDef,
+	translationDef: TranslationDef,
+	startOrbitAngle: number,
+}
+
+export type StarSystemDef = {
+	star: StarDef,
+	planets: { PlanetDef },
 }
 
 local PlanetDefinitions = {}
 
-local sharedStarCenter = Vector3.new(-300 * 20, -300, 0)
+local sharedStarPosition = Vector3.new(-300 * 20, -300, 0)
 
 function PlanetDefinitions.secondsPerRotationToAngularSpeed(secondsPerRotation: number): number
 	assert(secondsPerRotation > 0, "secondsPerRotation must be greater than zero")
@@ -37,42 +61,70 @@ end
 local planets: { PlanetDef } = {
 	{
 		name = "PlanetA",
-		center = sharedStarCenter + Vector3.new(12000, 0, 0),
-		radius = 300,
-		surfaceGravity = 196.2, -- matches default Roblox Workspace.Gravity for familiar feel
+		gravity = 196.2, -- matches default Roblox Workspace.Gravity for familiar feel
 		influenceRadius = 300 * 10,
-		rotationAxis = PlanetDefinitions.axisAngleToRotationAxis(math.rad(8), math.rad(10)),
-		angularSpeed = PlanetDefinitions.secondsPerRotationToAngularSpeed(300), -- 300s per rotation, fairly slow but noticeable
-		orbitCenter = sharedStarCenter,
-		orbitAxis = Vector3.yAxis,
-		orbitAngularSpeed = PlanetDefinitions.secondsPerRotationToAngularSpeed(60 * 20), -- 40 minutes per orbit, just to make it noticeable
+		distanceFromStar = 12000,
+		radius = 300,
+		rotationDef = {
+			rotationAxis = PlanetDefinitions.axisAngleToRotationAxis(math.rad(8), math.rad(10)),
+			angularSpeed = PlanetDefinitions.secondsPerRotationToAngularSpeed(300), -- 300s per rotation, fairly slow but noticeable
+			direction = "counterclockwise",
+		},
+		translationDef = {
+			orbitalSpeed = PlanetDefinitions.secondsPerRotationToAngularSpeed(60 * 20), -- 40 minutes per orbit, just to make it noticeable
+			orbitAxis = Vector3.yAxis,
+			direction = "counterclockwise",
+		},
+		startOrbitAngle = 0,
 	},
 	{
 		name = "PlanetB",
-		center = sharedStarCenter + Vector3.new(0, 0, 7600),
-		radius = 180,
-		surfaceGravity = 117.72,
+		gravity = 117.72,
 		influenceRadius = 180 * 10,
-		rotationAxis = PlanetDefinitions.axisAngleToRotationAxis(math.rad(4), math.rad(-25)),
-		angularSpeed = PlanetDefinitions.secondsPerRotationToAngularSpeed(210),
-		orbitCenter = sharedStarCenter,
-		orbitAxis = Vector3.yAxis,
-		orbitAngularSpeed = PlanetDefinitions.secondsPerRotationToAngularSpeed(60 * 10), -- closer orbit, faster period
+		distanceFromStar = 7600,
+		radius = 180,
+		rotationDef = {
+			rotationAxis = PlanetDefinitions.axisAngleToRotationAxis(math.rad(4), math.rad(-25)),
+			angularSpeed = PlanetDefinitions.secondsPerRotationToAngularSpeed(210),
+			direction = "counterclockwise",
+		},
+		translationDef = {
+			orbitalSpeed = PlanetDefinitions.secondsPerRotationToAngularSpeed(60 * 10), -- closer orbit, faster period
+			orbitAxis = Vector3.yAxis,
+			direction = "counterclockwise",
+		},
+		startOrbitAngle = math.pi * 0.5,
 	},
 	{
 		name = "PlanetC",
-		center = sharedStarCenter + Vector3.new(-18500, 0, 0),
-		radius = 140,
-		surfaceGravity = 91.56,
+		gravity = 91.56,
 		influenceRadius = 140 * 10,
-		rotationAxis = PlanetDefinitions.axisAngleToRotationAxis(math.rad(14), math.rad(40)),
-		angularSpeed = PlanetDefinitions.secondsPerRotationToAngularSpeed(260),
-		orbitCenter = sharedStarCenter,
-		orbitAxis = Vector3.yAxis,
-		orbitAngularSpeed = PlanetDefinitions.secondsPerRotationToAngularSpeed(60 * 58), -- farther orbit, slower period
+		distanceFromStar = 18500,
+		radius = 140,
+		rotationDef = {
+			rotationAxis = PlanetDefinitions.axisAngleToRotationAxis(math.rad(14), math.rad(40)),
+			angularSpeed = PlanetDefinitions.secondsPerRotationToAngularSpeed(260),
+			direction = "clockwise",
+		},
+		translationDef = {
+			orbitalSpeed = PlanetDefinitions.secondsPerRotationToAngularSpeed(60 * 58), -- farther orbit, slower period
+			orbitAxis = Vector3.yAxis,
+			direction = "counterclockwise",
+		},
+		startOrbitAngle = math.pi,
 	},
 }
 
-PlanetDefinitions.planets = planets
+local system: StarSystemDef = {
+	star = {
+		name = "PrototypeStar",
+		position = sharedStarPosition,
+		radius = 1800,
+		color = Color3.fromRGB(255, 196, 96),
+	},
+	planets = planets,
+}
+
+PlanetDefinitions.system = system
 
 return PlanetDefinitions

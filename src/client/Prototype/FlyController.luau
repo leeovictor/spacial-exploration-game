@@ -120,7 +120,8 @@ function FlyController.attach(character: Model, options: FlyControllerOptions?):
 			return
 		end
 
-		local activePlanet = PlanetMath.getActivePlanet(rootPart.Position)
+		local currentTime = PlanetMath.getMotionTime()
+		local activePlanet = PlanetMath.getActivePlanet(rootPart.Position, currentTime)
 		if activePlanet == nil then
 			lastPlanetName = nil
 			lastPlanetCenter = nil
@@ -140,13 +141,13 @@ function FlyController.attach(character: Model, options: FlyControllerOptions?):
 			return
 		end
 
-		local surfaceUp = PlanetMath.getSurfaceUp(rootPart.Position)
-		local currentPlanetCenter = PlanetMath.getPlanetCenter(activePlanet)
+		local surfaceUp = PlanetMath.getSurfaceUp(rootPart.Position, currentTime)
+		local currentPlanetCenter = PlanetMath.getPlanetCenter(activePlanet, currentTime)
 		if lastPlanetName == activePlanet.name and lastPlanetCenter ~= nil then
 			MovementControllerUtils.translateCharacterWithPlanet(rootPart, currentPlanetCenter - lastPlanetCenter)
 		end
 		local position = rootPart.Position
-		surfaceUp = PlanetMath.getSurfaceUp(position)
+		surfaceUp = PlanetMath.getSurfaceUp(position, currentTime)
 		local characterSupportDistance =
 			MovementControllerUtils.getCharacterSupportDistance(characterBaseParts, rootPart, surfaceUp)
 		local groundProbe = MovementControllerUtils.getGroundProbeResult(
@@ -228,7 +229,7 @@ function FlyController.attach(character: Model, options: FlyControllerOptions?):
 
 		flyVelocity.VectorVelocity = desiredHorizontalVelocity
 			+ surfaceUp * desiredVerticalSpeed
-			+ PlanetMath.getRotationalSurfaceVelocity(activePlanet, rootPart.Position)
+			+ PlanetMath.getRotationalSurfaceVelocity(activePlanet, rootPart.Position, currentTime)
 		flyVelocity.Enabled = true
 
 		if not cruiseRequested and onCruiseRequested ~= nil then

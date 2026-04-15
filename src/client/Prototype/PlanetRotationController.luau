@@ -7,18 +7,7 @@ local Workspace = game:GetService("Workspace")
 local PlanetDefinitions = require(ReplicatedStorage.Shared.Prototype.PlanetDefinitions)
 local PlanetMath = require(ReplicatedStorage.Shared.Prototype.Math.PlanetMath)
 
-type PlanetDef = {
-	name: string,
-	center: Vector3,
-	radius: number,
-	surfaceGravity: number,
-	influenceRadius: number,
-	rotationAxis: Vector3,
-	angularSpeed: number,
-	orbitCenter: Vector3?,
-	orbitAxis: Vector3?,
-	orbitAngularSpeed: number?,
-}
+type PlanetDef = PlanetDefinitions.PlanetDef
 
 type PlanetRotationState = {
 	planet: PlanetDef,
@@ -69,12 +58,13 @@ local function getOrbitPlaneBasis(orbitAxis: Vector3): (Vector3, Vector3)
 end
 
 local function createOrbitAxisPart(planet: PlanetDef): Part?
-	if planet.orbitCenter == nil then
+	if planet.distanceFromStar <= 0.001 then
 		return nil
 	end
 
+	local orbitCenter = PlanetMath.getOrbitCenter(planet)
 	local axis = PlanetMath.getOrbitAxis(planet)
-	local axisLength = math.max((planet.center - planet.orbitCenter).Magnitude * 2.4, planet.radius * 4)
+	local axisLength = math.max(planet.distanceFromStar * 2.4, planet.radius * 4)
 	local thickness = math.max(planet.radius * 0.03, 0.75)
 	local upVector = if math.abs(axis:Dot(Vector3.yAxis)) > 0.98 then Vector3.xAxis else Vector3.yAxis
 
@@ -90,14 +80,14 @@ local function createOrbitAxisPart(planet: PlanetDef): Part?
 	axisPart.Color = Color3.fromRGB(255, 145, 64)
 	axisPart.Transparency = 0.2
 	axisPart.Size = Vector3.new(thickness, thickness, axisLength)
-	axisPart.CFrame = CFrame.lookAt(planet.orbitCenter, planet.orbitCenter + axis, upVector)
+	axisPart.CFrame = CFrame.lookAt(orbitCenter, orbitCenter + axis, upVector)
 	axisPart.Parent = Workspace
 
 	return axisPart
 end
 
 local function createOrbitReferenceMarker(planet: PlanetDef): Part?
-	if planet.orbitCenter == nil then
+	if planet.distanceFromStar <= 0.001 then
 		return nil
 	end
 
@@ -121,13 +111,13 @@ local function createOrbitReferenceMarker(planet: PlanetDef): Part?
 end
 
 local function createOrbitSegmentParts(planet: PlanetDef): { Part }?
-	if planet.orbitCenter == nil then
+	if planet.distanceFromStar <= 0.001 then
 		return nil
 	end
 
 	local orbitCenter = PlanetMath.getOrbitCenter(planet)
 	local orbitAxis = PlanetMath.getOrbitAxis(planet)
-	local orbitRadius = (planet.center - orbitCenter).Magnitude
+	local orbitRadius = planet.distanceFromStar
 	if orbitRadius <= 0.001 then
 		return nil
 	end
@@ -169,7 +159,7 @@ local function createOrbitSegmentParts(planet: PlanetDef): { Part }?
 end
 
 local function updateOrbitDebug(state: PlanetRotationState)
-	if state.planet.orbitCenter == nil then
+	if state.planet.distanceFromStar <= 0.001 then
 		if state.orbitAxisPart ~= nil and state.orbitAxisPart.Parent ~= nil then
 			state.orbitAxisPart:Destroy()
 		end
@@ -185,7 +175,7 @@ local function updateOrbitDebug(state: PlanetRotationState)
 
 	local orbitCenter = PlanetMath.getOrbitCenter(state.planet)
 	local orbitAxis = PlanetMath.getOrbitAxis(state.planet)
-	local axisLength = math.max((state.planet.center - orbitCenter).Magnitude * 2.4, state.planet.radius * 4)
+	local axisLength = math.max(state.planet.distanceFromStar * 2.4, state.planet.radius * 4)
 	local thickness = math.max(state.planet.radius * 0.03, 0.75)
 	local upVector = if math.abs(orbitAxis:Dot(Vector3.yAxis)) > 0.98 then Vector3.xAxis else Vector3.yAxis
 
@@ -221,7 +211,7 @@ end
 local function refreshPlanetStates()
 	local nextStates: { [Model]: PlanetRotationState } = {}
 
-	for _, planet in PlanetDefinitions.planets do
+	for _, planet in PlanetDefinitions.system.planets do
 		local planetModel = Workspace:FindFirstChild(planet.name)
 		if planetModel ~= nil and planetModel:IsA("Model") then
 			local existingState = planetStates[planetModel]
@@ -231,7 +221,7 @@ local function refreshPlanetStates()
 				orbitReferenceMarker = if existingState ~= nil then existingState.orbitReferenceMarker else nil,
 				orbitSegmentParts = if existingState ~= nil then existingState.orbitSegmentParts else nil,
 			}
-			updateOrbitDebug(nextState)
+			-- updateOrbitDebug(nextState)
 			nextStates[planetModel] = nextState
 		end
 	end
@@ -271,7 +261,7 @@ function PlanetRotationController.start()
 				CFrame.new(PlanetMath.getPlanetCenter(state.planet, currentTime))
 					* CFrame.fromAxisAngle(
 						PlanetMath.getRotationAxis(state.planet),
-						math.fmod(state.planet.angularSpeed * currentTime, math.pi * 2)
+						math.fmod(PlanetMath.getRotationAngularSpeed(state.planet) * currentTime, math.pi * 2)
 					)
 			)
 		end

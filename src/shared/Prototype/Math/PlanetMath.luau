@@ -5,18 +5,11 @@ local Workspace = game:GetService("Workspace")
 
 local PlanetDefinitions = require(ReplicatedStorage.Shared.Prototype.PlanetDefinitions)
 
-type PlanetDef = {
-	name: string,
-	center: Vector3,
-	radius: number,
-	surfaceGravity: number,
-	influenceRadius: number,
-	rotationAxis: Vector3,
-	angularSpeed: number,
-	orbitCenter: Vector3?,
-	orbitAxis: Vector3?,
-	orbitAngularSpeed: number?,
-}
+type RotationDef = PlanetDefinitions.RotationDef
+type TranslationDef = PlanetDefinitions.TranslationDef
+type StarDef = PlanetDefinitions.StarDef
+type PlanetDef = PlanetDefinitions.PlanetDef
+type StarSystemDef = PlanetDefinitions.StarSystemDef
 
 local EPSILON = 0.01
 local MIN_ROTATION_AXIS_MAGNITUDE = 0.0001
@@ -26,20 +19,64 @@ local ROBLOX_SOLAR_TILT_DEGREES = 23.5
 
 local PlanetMath = {}
 
+local function getSystem(): StarSystemDef
+	return PlanetDefinitions.system
+end
+
+local function getSignedAngularSpeed(speed: number, direction: string): number
+	if direction == "clockwise" then
+		return -speed
+	end
+
+	return speed
+end
+
+local function getOrbitPlaneBasis(orbitAxis: Vector3): (Vector3, Vector3)
+	local tangent = orbitAxis:Cross(Vector3.yAxis)
+	if tangent.Magnitude <= EPSILON then
+		tangent = orbitAxis:Cross(Vector3.xAxis)
+	end
+
+	tangent = tangent.Unit
+	local bitangent = orbitAxis:Cross(tangent)
+	if bitangent.Magnitude <= EPSILON then
+		bitangent = orbitAxis:Cross(Vector3.zAxis)
+	end
+
+	return tangent, bitangent.Unit
+end
+
 function PlanetMath.getMotionTime(): number
 	return Workspace:GetServerTimeNow()
+end
+
+function PlanetMath.getSystem(): StarSystemDef
+	return getSystem()
+end
+
+function PlanetMath.getStar(): StarDef
+	return getSystem().star
+end
+
+function PlanetMath.getStarPosition(): Vector3
+	return PlanetMath.getStar().position
+end
+
+function PlanetMath.getPlanets(): { PlanetDef }
+	return getSystem().planets
 end
 
 function PlanetMath.projectOntoPlane(vector: Vector3, planeNormal: Vector3): Vector3
 	return vector - vector:Dot(planeNormal) * planeNormal
 end
 
-function PlanetMath.getActivePlanet(position: Vector3): (PlanetDef?, number)
+function PlanetMath.getActivePlanet(position: Vector3, timeSeconds: number?): (PlanetDef?, number)
 	local activePlanet: PlanetDef? = nil
 	local closestDistance = math.huge
+	local resolvedTime = if timeSeconds ~= nil then timeSeconds else PlanetMath.getMotionTime()
 
-	for _, planet in PlanetDefinitions.planets do
-		local distance = (position - PlanetMath.getPlanetCenter(planet)).Magnitude
+	for _, planet in PlanetMath.getPlanets() do
+		local distance = (position - PlanetMath.getPlanetCenter(planet, resolvedTime)).Magnitude
 		if distance < planet.influenceRadius and distance < closestDistance then
 			closestDistance = distance
 			activePlanet = planet
@@ -49,13 +86,14 @@ function PlanetMath.getActivePlanet(position: Vector3): (PlanetDef?, number)
 	return activePlanet, closestDistance
 end
 
-function PlanetMath.getSurfaceUp(position: Vector3): Vector3
-	local activePlanet = PlanetMath.getActivePlanet(position)
+function PlanetMath.getSurfaceUp(position: Vector3, timeSeconds: number?): Vector3
+	local activePlanet = PlanetMath.getActivePlanet(position, timeSeconds)
 	if activePlanet == nil then
 		return Vector3.yAxis
 	end
 
-	local fromCenter = position - PlanetMath.getPlanetCenter(activePlanet)
+	local resolvedTime = if timeSeconds ~= nil then timeSeconds else PlanetMath.getMotionTime()
+	local fromCenter = position - PlanetMath.getPlanetCenter(activePlanet, resolvedTime)
 	if fromCenter.Magnitude <= 0.001 then
 		return Vector3.yAxis
 	end
@@ -85,54 +123,55 @@ function PlanetMath.getPlanarDirection(surfaceUp: Vector3, primaryVector: Vector
 end
 
 function PlanetMath.getRotationAxis(planet: PlanetDef): Vector3
-	if planet.rotationAxis.Magnitude <= MIN_ROTATION_AXIS_MAGNITUDE then
+	if planet.rotationDef.rotationAxis.Magnitude <= MIN_ROTATION_AXIS_MAGNITUDE then
 		return Vector3.yAxis
 	end
 
-	return planet.rotationAxis.Unit
+	return planet.rotationDef.rotationAxis.Unit
 end
 
 function PlanetMath.getAngularVelocity(planet: PlanetDef): Vector3
-	return PlanetMath.getRotationAxis(planet) * planet.angularSpeed
+	return PlanetMath.getRotationAxis(planet)
+		* getSignedAngularSpeed(planet.rotationDef.angularSpeed, planet.rotationDef.direction)
+end
+
+function PlanetMath.getRotationAngularSpeed(planet: PlanetDef): number
+	return getSignedAngularSpeed(planet.rotationDef.angularSpeed, planet.rotationDef.direction)
 end
 
 function PlanetMath.getOrbitAxis(planet: PlanetDef): Vector3
-	if planet.orbitAxis == nil or planet.orbitAxis.Magnitude <= MIN_ROTATION_AXIS_MAGNITUDE then
+	local orbitAxis = planet.translationDef.orbitAxis
+	if orbitAxis == nil or orbitAxis.Magnitude <= MIN_ROTATION_AXIS_MAGNITUDE then
 		return Vector3.yAxis
 	end
 
-	return planet.orbitAxis.Unit
+	return orbitAxis.Unit
 end
 
-function PlanetMath.getOrbitCenter(planet: PlanetDef): Vector3
-	if planet.orbitCenter == nil then
-		return planet.center
-	end
-
-	return planet.orbitCenter
+function PlanetMath.getOrbitCenter(_planet: PlanetDef): Vector3
+	return PlanetMath.getStarPosition()
 end
 
 function PlanetMath.getOrbitAngularSpeed(planet: PlanetDef): number
-	if planet.orbitAngularSpeed == nil then
-		return 0
-	end
-
-	return planet.orbitAngularSpeed
+	return getSignedAngularSpeed(planet.translationDef.orbitalSpeed, planet.translationDef.direction)
 end
 
 function PlanetMath.getPlanetCenter(planet: PlanetDef, timeSeconds: number?): Vector3
 	local orbitAngularSpeed = PlanetMath.getOrbitAngularSpeed(planet)
 	local orbitCenter = PlanetMath.getOrbitCenter(planet)
-	local baseOffset = planet.center - orbitCenter
+	local orbitRadius = planet.distanceFromStar
 
-	if orbitAngularSpeed == 0 or baseOffset.Magnitude <= EPSILON then
-		return planet.center
+	if orbitRadius <= EPSILON then
+		return orbitCenter
 	end
 
+	local orbitAxis = PlanetMath.getOrbitAxis(planet)
+	local tangent, bitangent = getOrbitPlaneBasis(orbitAxis)
 	local resolvedTime = if timeSeconds ~= nil then timeSeconds else PlanetMath.getMotionTime()
-	local orbitAngle = math.fmod(orbitAngularSpeed * resolvedTime, math.pi * 2)
-	return orbitCenter
-		+ CFrame.fromAxisAngle(PlanetMath.getOrbitAxis(planet), orbitAngle):VectorToWorldSpace(baseOffset)
+	local orbitAngle = math.fmod(planet.startOrbitAngle + orbitAngularSpeed * resolvedTime, math.pi * 2)
+	local orbitOffset = tangent * (math.cos(orbitAngle) * orbitRadius)
+		+ bitangent * (math.sin(orbitAngle) * orbitRadius)
+	return orbitCenter + orbitOffset
 end
 
 function PlanetMath.getPlanetCenterVelocity(planet: PlanetDef, timeSeconds: number?): Vector3
@@ -151,16 +190,18 @@ function PlanetMath.getRotationalSurfaceVelocity(planet: PlanetDef, position: Ve
 	return PlanetMath.getAngularVelocity(planet):Cross(position - currentCenter)
 end
 
-function PlanetMath.getSurfaceVelocity(planet: PlanetDef, position: Vector3): Vector3
-	return PlanetMath.getPlanetCenterVelocity(planet) + PlanetMath.getRotationalSurfaceVelocity(planet, position)
+function PlanetMath.getSurfaceVelocity(planet: PlanetDef, position: Vector3, timeSeconds: number?): Vector3
+	return PlanetMath.getPlanetCenterVelocity(planet, timeSeconds)
+		+ PlanetMath.getRotationalSurfaceVelocity(planet, position, timeSeconds)
 end
 
 function PlanetMath.getPlanetRotationDelta(planet: PlanetDef, deltaTime: number): CFrame
-	if math.abs(planet.angularSpeed) <= EPSILON or deltaTime == 0 then
+	local signedAngularSpeed = PlanetMath.getRotationAngularSpeed(planet)
+	if math.abs(signedAngularSpeed) <= EPSILON or deltaTime == 0 then
 		return CFrame.identity
 	end
 
-	return CFrame.fromAxisAngle(PlanetMath.getRotationAxis(planet), planet.angularSpeed * deltaTime)
+	return CFrame.fromAxisAngle(PlanetMath.getRotationAxis(planet), signedAngularSpeed * deltaTime)
 end
 
 function PlanetMath.rotateVectorWithPlanet(planet: PlanetDef, vector: Vector3, deltaTime: number): Vector3

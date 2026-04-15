@@ -62,15 +62,14 @@ function LightingController.start()
 		end
 
 		local currentTime = PlanetMath.getMotionTime()
-		local activePlanet = PlanetMath.getActivePlanet(rootPart.Position)
-		if activePlanet == nil or activePlanet.orbitCenter == nil then
-			restoreDefaultLighting()
+		local activePlanet = PlanetMath.getActivePlanet(rootPart.Position, currentTime)
+		if activePlanet == nil then
 			return
 		end
 
 		local clockTime, geographicLatitude = PlanetMath.getLightingClockTimeAndGeographicLatitude(
 			PlanetMath.getPlanetCenter(activePlanet, currentTime),
-			PlanetMath.getOrbitCenter(activePlanet)
+			PlanetMath.getStarPosition()
 		)
 		applyLighting(clockTime, geographicLatitude)
 	end)

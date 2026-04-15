@@ -14,16 +14,16 @@ Workspace.Gravity = 0
 local SPAWN_SURFACE_OFFSET = 3
 
 local function getSpawnPlanet()
-	return PlanetDefinitions.planets[1]
+	return PlanetDefinitions.system.planets[1]
 end
 
-local function getCharacterSpawnCFrame(character: Model, rootPart: BasePart): CFrame?
+local function getCharacterSpawnCFrame(character: Model, rootPart: BasePart, motionTime: number): CFrame?
 	local spawnPlanet = getSpawnPlanet()
 	if spawnPlanet == nil then
 		return nil
 	end
 
-	local planetCenter = PlanetMath.getPlanetCenter(spawnPlanet)
+	local planetCenter = PlanetMath.getPlanetCenter(spawnPlanet, motionTime)
 	local surfaceUp = PlanetMath.getRotationAxis(spawnPlanet)
 	if surfaceUp.Magnitude <= 0.001 then
 		surfaceUp = Vector3.yAxis
@@ -49,13 +49,14 @@ local function placeCharacterOnPlanetSurface(character: Model)
 		return
 	end
 
-	local spawnCFrame = getCharacterSpawnCFrame(character, rootPart)
+	local motionTime = PlanetMath.getMotionTime()
+	local spawnCFrame = getCharacterSpawnCFrame(character, rootPart, motionTime)
 	if spawnCFrame == nil then
 		return
 	end
 
 	character:PivotTo(spawnCFrame)
-	rootPart.AssemblyLinearVelocity = PlanetMath.getRotationalSurfaceVelocity(spawnPlanet, rootPart.Position)
+	rootPart.AssemblyLinearVelocity = PlanetMath.getSurfaceVelocity(spawnPlanet, rootPart.Position, motionTime)
 	rootPart.AssemblyAngularVelocity = Vector3.zero
 end
 

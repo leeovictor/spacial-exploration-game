@@ -149,10 +149,11 @@ function PlanetLocomotionController.attach(character: Model): (() -> ())?
 
 		local position = rootPart.Position
 		local mass = rootPart.AssemblyMass
-		local activePlanet = PlanetMath.getActivePlanet(position)
+		local currentTime = PlanetMath.getMotionTime()
+		local activePlanet = PlanetMath.getActivePlanet(position, currentTime)
 
 		if activePlanet ~= nil then
-			local currentPlanetCenter = PlanetMath.getPlanetCenter(activePlanet)
+			local currentPlanetCenter = PlanetMath.getPlanetCenter(activePlanet, currentTime)
 			if lastPlanetName == activePlanet.name and lastPlanetCenter ~= nil then
 				MovementControllerUtils.translateCharacterWithPlanet(rootPart, currentPlanetCenter - lastPlanetCenter)
 				position = rootPart.Position
@@ -168,7 +169,7 @@ function PlanetLocomotionController.attach(character: Model): (() -> ())?
 			end
 
 			local gravDir = toCenter.Unit
-			gravForce.Force = gravDir * activePlanet.surfaceGravity * mass
+			gravForce.Force = gravDir * activePlanet.gravity * mass
 
 			local surfaceUp = -gravDir
 			local characterSupportDistance =
@@ -218,8 +219,10 @@ function PlanetLocomotionController.attach(character: Model): (() -> ())?
 				desiredVelocity = moveDirection * LocomotionConstants.walkSpeed
 			end
 
-			local inheritedSurfaceVelocity =
-				PlanetMath.projectOntoPlane(PlanetMath.getRotationalSurfaceVelocity(activePlanet, position), surfaceUp)
+			local inheritedSurfaceVelocity = PlanetMath.projectOntoPlane(
+				PlanetMath.getRotationalSurfaceVelocity(activePlanet, position, currentTime),
+				surfaceUp
+			)
 			local totalDesiredVelocity = desiredVelocity + inheritedSurfaceVelocity
 
 			moveVelocity.PlaneVelocity =
@@ -250,7 +253,7 @@ function PlanetLocomotionController.attach(character: Model): (() -> ())?
 			MovementControllerUtils.setLocomotionState(character, locomotionState)
 
 			if queuedJump and canJumpFromProbe then
-				local jumpSpeed = math.sqrt(2 * activePlanet.surfaceGravity * LocomotionConstants.jumpHeight)
+				local jumpSpeed = math.sqrt(2 * activePlanet.gravity * LocomotionConstants.jumpHeight)
 				rootPart:ApplyImpulse(surfaceUp * mass * jumpSpeed)
 			end
 			queuedJump = false
