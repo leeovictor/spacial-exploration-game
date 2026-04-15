@@ -45,7 +45,7 @@ local planets: { PlanetDef } = {
 		angularSpeed = PlanetDefinitions.secondsPerRotationToAngularSpeed(300), -- 300s per rotation, fairly slow but noticeable
 		orbitCenter = sharedStarCenter,
 		orbitAxis = Vector3.yAxis,
-		orbitAngularSpeed = PlanetDefinitions.secondsPerRotationToAngularSpeed(60 * 40), -- 40 minutes per orbit, just to make it noticeable
+		orbitAngularSpeed = PlanetDefinitions.secondsPerRotationToAngularSpeed(60 * 20), -- 40 minutes per orbit, just to make it noticeable
 	},
 	{
 		name = "PlanetB",
@@ -57,7 +57,7 @@ local planets: { PlanetDef } = {
 		angularSpeed = PlanetDefinitions.secondsPerRotationToAngularSpeed(210),
 		orbitCenter = sharedStarCenter,
 		orbitAxis = Vector3.yAxis,
-		orbitAngularSpeed = PlanetDefinitions.secondsPerRotationToAngularSpeed(60 * 28), -- closer orbit, faster period
+		orbitAngularSpeed = PlanetDefinitions.secondsPerRotationToAngularSpeed(60 * 10), -- closer orbit, faster period
 	},
 	{
 		name = "PlanetC",

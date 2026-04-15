@@ -14,12 +14,15 @@ local MIN_CAMERA_DISTANCE = 8
 local MAX_CAMERA_DISTANCE = 300
 local CAMERA_FOCUS_HEIGHT = 2
 local CRUISE_CAMERA_FOCUS_HEIGHT = 3.25
+local DEFAULT_CAMERA_FOV = 70
+local CRUISE_CAMERA_FOV = 90
 local CAMERA_SENSITIVITY = 0.0035
 local MIN_PITCH = math.rad(-85)
 local MAX_PITCH = math.rad(85)
 local CAMERA_COLLISION_BUFFER = 0.75
 local CAMERA_ROLL_SPEED = math.rad(120)
 local CRUISE_EXIT_BLEND_SPEED = 8
+local CAMERA_FOV_BLEND_SPEED = 6
 local RENDER_STEP_NAME = "PrototypePlanetCamera"
 
 local function getFallbackForward(surfaceUp: Vector3): Vector3
@@ -114,6 +117,7 @@ function CameraController.start()
 		local previousMouseIconEnabled = UserInputService.MouseIconEnabled
 		local previousCameraType = nil :: Enum.CameraType?
 		local previousCameraSubject = nil :: Instance?
+		local previousFieldOfView = nil :: number?
 		local pitch = math.rad(20)
 		local cameraDistance = CAMERA_DISTANCE
 		local planarForward = getFallbackForward(PlanetMath.getSurfaceUp(rootPart.Position))
@@ -137,7 +141,7 @@ function CameraController.start()
 			end
 		)
 
-		RunService:BindToRenderStep(RENDER_STEP_NAME, Enum.RenderPriority.Camera.Value + 1, function(deltaTime)
+		RunService:BindToRenderStep(RENDER_STEP_NAME, Enum.RenderPriority.Camera.Value + 1, function(deltaTime: number)
 			if rootPart.Parent == nil then
 				return
 			end
@@ -150,6 +154,7 @@ function CameraController.start()
 			if previousCameraType == nil then
 				previousCameraType = currentCamera.CameraType
 				previousCameraSubject = currentCamera.CameraSubject
+				previousFieldOfView = currentCamera.FieldOfView
 			end
 
 			currentCamera.CameraType = Enum.CameraType.Scriptable
@@ -157,6 +162,13 @@ function CameraController.start()
 			UserInputService.MouseIconEnabled = false
 
 			local movementMode = getCharacterMovementMode(character)
+			local targetFieldOfView = if movementMode == MovementMode.Cruise
+				then CRUISE_CAMERA_FOV
+				else DEFAULT_CAMERA_FOV
+			currentCamera.FieldOfView += (targetFieldOfView - currentCamera.FieldOfView) * math.min(
+				deltaTime * CAMERA_FOV_BLEND_SPEED,
+				1
+			)
 			local modeChanged = movementMode ~= lastMovementMode
 			local mouseDelta = UserInputService:GetMouseDelta()
 
@@ -322,6 +334,7 @@ function CameraController.start()
 			if currentCamera ~= nil then
 				currentCamera.CameraType = previousCameraType or Enum.CameraType.Custom
 				currentCamera.CameraSubject = previousCameraSubject or humanoid
+				currentCamera.FieldOfView = previousFieldOfView or DEFAULT_CAMERA_FOV
 			end
 		end
 
