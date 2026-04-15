@@ -32,6 +32,10 @@ local function createPlanetFromDefinition(planetDefinition)
 		fallbackColor = Color3.fromRGB(85, 100, 72),
 		collisionFidelity = Enum.CollisionFidelity.Hull,
 		renderFidelity = Enum.RenderFidelity.Automatic,
+		rotationAxis = planetDefinition.rotationAxis,
+		angularSpeed = planetDefinition.angularSpeed,
+		debugShowRotationAxis = true,
+		debugShowEquator = true,
 	})
 
 	print(

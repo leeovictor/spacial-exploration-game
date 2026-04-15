@@ -56,6 +56,7 @@ function CameraController.start()
 		local pitch = math.rad(20)
 		local cameraDistance = CAMERA_DISTANCE
 		local planarForward = getFallbackForward(PlanetMath.getSurfaceUp(rootPart.Position))
+		local lastPlanetName: string? = nil
 
 		local wheelConn = UserInputService.InputChanged:Connect(
 			function(input: InputObject, gameProcessedEvent: boolean)
@@ -70,7 +71,7 @@ function CameraController.start()
 			end
 		)
 
-		RunService:BindToRenderStep(RENDER_STEP_NAME, Enum.RenderPriority.Camera.Value + 1, function()
+		RunService:BindToRenderStep(RENDER_STEP_NAME, Enum.RenderPriority.Camera.Value + 1, function(deltaTime)
 			if rootPart.Parent == nil then
 				return
 			end
@@ -90,6 +91,22 @@ function CameraController.start()
 			UserInputService.MouseIconEnabled = false
 
 			local surfaceUp = PlanetMath.getSurfaceUp(rootPart.Position)
+			local activePlanet = PlanetMath.getActivePlanet(rootPart.Position)
+			if activePlanet ~= nil then
+				if lastPlanetName == activePlanet.name then
+					planarForward = PlanetMath.rotateVectorWithPlanet(activePlanet, planarForward, deltaTime)
+				else
+					planarForward = PlanetMath.getPlanarDirection(
+						surfaceUp,
+						rootPart.CFrame.LookVector,
+						currentCamera.CFrame.LookVector
+					)
+				end
+				lastPlanetName = activePlanet.name
+			else
+				lastPlanetName = nil
+			end
+
 			planarForward = PlanetMath.projectOntoPlane(planarForward, surfaceUp)
 			if planarForward.Magnitude <= 0.01 then
 				planarForward = getFallbackForward(surfaceUp)

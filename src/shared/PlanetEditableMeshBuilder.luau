@@ -23,6 +23,10 @@ export type PlanetBuildOptions = {
 	fallbackMaterial: Enum.Material?,
 	fallbackColor: Color3?,
 	fallbackTransparency: number?,
+	rotationAxis: Vector3?,
+	angularSpeed: number?,
+	debugShowRotationAxis: boolean?,
+	debugShowEquator: boolean?,
 }
 
 export type PlanetPatch = {
@@ -54,6 +58,12 @@ type PlanetPatchDescriptor = {
 local DEFAULT_PATCH_RESOLUTION = 12
 local DEFAULT_FACE_SUBDIVISIONS = 2
 local MAX_PATCH_RESOLUTION = 100
+local PLANET_PIVOT_PART_NAME = "PlanetPivot"
+local ROTATION_AXIS_PART_NAME = "PlanetRotationAxis"
+local ROTATION_AXIS_POSITIVE_CAP_NAME = "PlanetRotationAxisPositiveCap"
+local EQUATOR_SEGMENT_NAME = "PlanetEquatorSegment"
+local MIN_ROTATION_AXIS_MAGNITUDE = 0.0001
+local EQUATOR_SEGMENT_COUNT = 36
 
 local FACE_AXES = {
 	{ normal = Vector3.new(0, 0, 1), right = Vector3.new(1, 0, 0), up = Vector3.new(0, 1, 0) },
@@ -68,6 +78,14 @@ local PlanetEditableMeshBuilder = {}
 
 local function lerp(a: number, b: number, alpha: number): number
 	return a + (b - a) * alpha
+end
+
+local function getNormalizedRotationAxis(axis: Vector3?): Vector3
+	if axis == nil or axis.Magnitude <= MIN_ROTATION_AXIS_MAGNITUDE then
+		return Vector3.yAxis
+	end
+
+	return axis.Unit
 end
 
 local function getGridIndex(x: number, y: number, resolution: number): number
@@ -163,6 +181,110 @@ local function applyCommonPartProperties(meshPart: MeshPart, options: PlanetBuil
 	end
 
 	meshPart:SetAttribute("PlanetSurfacePatch", true)
+end
+
+local function createModelPivot(model: Model, center: Vector3): BasePart
+	local pivotPart = Instance.new("Part")
+	pivotPart.Name = PLANET_PIVOT_PART_NAME
+	pivotPart.Anchored = true
+	pivotPart.CanCollide = false
+	pivotPart.CanQuery = false
+	pivotPart.CanTouch = false
+	pivotPart.Transparency = 1
+	pivotPart.CastShadow = false
+	pivotPart.Locked = true
+	pivotPart.Size = Vector3.new(1, 1, 1)
+	pivotPart.CFrame = CFrame.new(center)
+	pivotPart.Parent = model
+
+	model.PrimaryPart = pivotPart
+
+	return pivotPart
+end
+
+local function createRotationAxisDebug(model: Model, options: PlanetBuildOptions)
+	if options.debugShowRotationAxis ~= true then
+		return
+	end
+
+	local axis = getNormalizedRotationAxis(options.rotationAxis)
+	local center = options.center
+	local axisLength = options.radius * 2.4
+	local thickness = math.max(options.radius * 0.04, 0.6)
+	local positiveCapOffset = axis * (axisLength * 0.5)
+	local upVector = if math.abs(axis:Dot(Vector3.yAxis)) > 0.98 then Vector3.xAxis else Vector3.yAxis
+
+	local axisPart = Instance.new("Part")
+	axisPart.Name = ROTATION_AXIS_PART_NAME
+	axisPart.Anchored = true
+	axisPart.CanCollide = false
+	axisPart.CanQuery = false
+	axisPart.CanTouch = false
+	axisPart.CastShadow = false
+	axisPart.Locked = true
+	axisPart.Material = Enum.Material.Neon
+	axisPart.Color = Color3.fromRGB(255, 196, 64)
+	axisPart.Transparency = 0.1
+	axisPart.Size = Vector3.new(thickness, thickness, axisLength)
+	axisPart.CFrame = CFrame.lookAt(center, center + axis, upVector)
+	axisPart.Parent = model
+
+	local positiveCap = Instance.new("Part")
+	positiveCap.Name = ROTATION_AXIS_POSITIVE_CAP_NAME
+	positiveCap.Shape = Enum.PartType.Ball
+	positiveCap.Anchored = true
+	positiveCap.CanCollide = false
+	positiveCap.CanQuery = false
+	positiveCap.CanTouch = false
+	positiveCap.CastShadow = false
+	positiveCap.Locked = true
+	positiveCap.Material = Enum.Material.Neon
+	positiveCap.Color = Color3.fromRGB(255, 92, 92)
+	positiveCap.Transparency = 0
+	positiveCap.Size = Vector3.one * math.max(options.radius * 0.12, 1.2)
+	positiveCap.CFrame = CFrame.new(center + positiveCapOffset)
+	positiveCap.Parent = model
+end
+
+local function createEquatorDebug(model: Model, options: PlanetBuildOptions)
+	if options.debugShowEquator ~= true then
+		return
+	end
+
+	local axis = getNormalizedRotationAxis(options.rotationAxis)
+	local center = options.center
+	local thickness = math.max(options.radius * 0.02, 0.35)
+	local equatorRadius = options.radius * 1.01
+	local basisX = axis:Cross(Vector3.yAxis)
+	if basisX.Magnitude <= MIN_ROTATION_AXIS_MAGNITUDE then
+		basisX = axis:Cross(Vector3.xAxis)
+	end
+	basisX = basisX.Unit
+	local basisZ = axis:Cross(basisX).Unit
+
+	for segmentIndex = 0, EQUATOR_SEGMENT_COUNT - 1 do
+		local alpha0 = (segmentIndex / EQUATOR_SEGMENT_COUNT) * math.pi * 2
+		local alpha1 = ((segmentIndex + 1) / EQUATOR_SEGMENT_COUNT) * math.pi * 2
+		local point0 = center + (basisX * math.cos(alpha0) + basisZ * math.sin(alpha0)) * equatorRadius
+		local point1 = center + (basisX * math.cos(alpha1) + basisZ * math.sin(alpha1)) * equatorRadius
+		local midpoint = (point0 + point1) * 0.5
+		local tangent = point1 - point0
+
+		local segment = Instance.new("Part")
+		segment.Name = EQUATOR_SEGMENT_NAME
+		segment.Anchored = true
+		segment.CanCollide = false
+		segment.CanQuery = false
+		segment.CanTouch = false
+		segment.CastShadow = false
+		segment.Locked = true
+		segment.Material = Enum.Material.Neon
+		segment.Color = Color3.fromRGB(64, 214, 255)
+		segment.Transparency = 0.2
+		segment.Size = Vector3.new(thickness, thickness, tangent.Magnitude)
+		segment.CFrame = CFrame.lookAt(midpoint, midpoint + tangent.Unit, (midpoint - center).Unit)
+		segment.Parent = model
+	end
 end
 
 local function buildEditablePatchMesh(
@@ -263,7 +385,6 @@ local function createFallbackPlanet(model: Model, options: PlanetBuildOptions, e
 	fallbackSphere.BottomSurface = Enum.SurfaceType.Smooth
 	fallbackSphere.Parent = model
 
-	model.PrimaryPart = fallbackSphere
 	model:SetAttribute("PlanetUsedEditableMeshes", false)
 	model:SetAttribute("PlanetBuildErrors", table.concat(errors, "\n"))
 end
@@ -290,6 +411,9 @@ function PlanetEditableMeshBuilder.createPlanet(options: PlanetBuildOptions): Pl
 	local model = Instance.new("Model")
 	model.Name = if options.name ~= nil then options.name else "Planet"
 	model.Parent = if options.parent ~= nil then options.parent else workspace
+	createModelPivot(model, options.center)
+	createRotationAxisDebug(model, options)
+	createEquatorDebug(model, options)
 
 	model:SetAttribute("PlanetCenterX", options.center.X)
 	model:SetAttribute("PlanetCenterY", options.center.Y)
@@ -297,6 +421,10 @@ function PlanetEditableMeshBuilder.createPlanet(options: PlanetBuildOptions): Pl
 	model:SetAttribute("PlanetRadius", options.radius)
 	model:SetAttribute("PlanetPatchResolution", patchResolution)
 	model:SetAttribute("PlanetFaceSubdivisions", faceSubdivisions)
+	model:SetAttribute("PlanetRotationAxisX", getNormalizedRotationAxis(options.rotationAxis).X)
+	model:SetAttribute("PlanetRotationAxisY", getNormalizedRotationAxis(options.rotationAxis).Y)
+	model:SetAttribute("PlanetRotationAxisZ", getNormalizedRotationAxis(options.rotationAxis).Z)
+	model:SetAttribute("PlanetAngularSpeed", if options.angularSpeed ~= nil then options.angularSpeed else 0)
 
 	local errors = {}
 	local patches = {}
@@ -365,7 +493,6 @@ function PlanetEditableMeshBuilder.createPlanet(options: PlanetBuildOptions): Pl
 		}
 	end
 
-	model.PrimaryPart = patches[1].meshPart
 	model:SetAttribute("PlanetUsedEditableMeshes", true)
 	model:SetAttribute("PlanetPatchCount", #patches)
 
