@@ -8,6 +8,7 @@ local Workspace = game:GetService("Workspace")
 local PlanetMath = require(ReplicatedStorage.Shared.Prototype.Math.PlanetMath)
 local LocomotionConstants = require(ReplicatedStorage.Shared.Prototype.LocomotionConstants)
 local LocomotionState = require(ReplicatedStorage.Shared.Prototype.LocomotionState)
+local MovementControllerUtils = require(script.Parent.MovementControllerUtils)
 
 local GRAVITY_ATTACHMENT_NAME = "PlanetGravityAttachment"
 local GRAVITY_FORCE_NAME = "PlanetGravityForce"
@@ -18,21 +19,6 @@ local GROUND_DEBUG_SPHERE_NAME = "PlanetGroundProbeDebug"
 local GROUND_NORMAL_THRESHOLD = 0.35
 local GROUND_PROBE_START_HEIGHT = 0
 local GROUNDED_VERTICAL_SPEED_THRESHOLD = 1
-
-type GroundProbeResult = {
-	isGrounded: boolean,
-	hasHit: boolean,
-	hasWalkableGround: boolean,
-	distance: number?,
-	origin: Vector3,
-	radius: number,
-}
-
-type CharacterBaseParts = { BasePart }
-
-local function getGroundProbeRadius(rootPart: BasePart): number
-	return math.max(math.min(rootPart.Size.X, rootPart.Size.Z) * 0.35, 1.5)
-end
 
 local function createGroundDebugSphere(): Part?
 	if not RunService:IsStudio() then
@@ -73,154 +59,18 @@ local function getGroundProbeResult(
 	surfaceUp: Vector3,
 	characterSupportDistance: number,
 	raycastParams: RaycastParams
-): GroundProbeResult
-	local probeRadius = getGroundProbeRadius(rootPart)
-	local probeOriginOffset = math.max(characterSupportDistance - probeRadius - GROUND_PROBE_START_HEIGHT, 0)
-	local probeOrigin = rootPart.Position - surfaceUp * probeOriginOffset
-	local probeDirection = -surfaceUp * LocomotionConstants.groundProbeLength
-	local probeResult = Workspace:Spherecast(probeOrigin, probeRadius, probeDirection, raycastParams)
-	local maxGroundDistance = GROUND_PROBE_START_HEIGHT + math.max(-LocomotionConstants.groundedDistanceBuffer, 0)
-
-	if probeResult == nil then
-		return {
-			isGrounded = false,
-			hasHit = false,
-			hasWalkableGround = false,
-			distance = nil,
-			origin = probeOrigin,
-			radius = probeRadius,
-		}
-	end
-
-	if probeResult.Instance:IsDescendantOf(character) then
-		return {
-			isGrounded = false,
-			hasHit = false,
-			hasWalkableGround = false,
-			distance = nil,
-			origin = probeOrigin,
-			radius = probeRadius,
-		}
-	end
-
-	local hasWalkableGround = probeResult.Normal:Dot(surfaceUp) >= GROUND_NORMAL_THRESHOLD
-	local isGrounded = probeResult.Distance <= maxGroundDistance and hasWalkableGround
-
-	return {
-		isGrounded = isGrounded,
-		hasHit = true,
-		hasWalkableGround = hasWalkableGround,
-		distance = probeResult.Distance,
-		origin = probeOrigin,
-		radius = probeRadius,
-	}
-end
-
-local function setLocomotionState(character: Model, stateName: string)
-	if character:GetAttribute(LocomotionState.attributeName) == stateName then
-		return
-	end
-
-	character:SetAttribute(LocomotionState.attributeName, stateName)
-end
-
-local function getPartSupportDistanceAlongDirection(
-	rootPart: BasePart,
-	part: BasePart,
-	supportDirection: Vector3
-): number
-	local halfSize = part.Size * 0.5
-	local axisX = part.CFrame.XVector
-	local axisY = part.CFrame.YVector
-	local axisZ = part.CFrame.ZVector
-	local relativePosition = part.Position - rootPart.Position
-
-	return -relativePosition:Dot(supportDirection)
-		+ math.abs(axisX:Dot(supportDirection)) * halfSize.X
-		+ math.abs(axisY:Dot(supportDirection)) * halfSize.Y
-		+ math.abs(axisZ:Dot(supportDirection)) * halfSize.Z
-end
-
-local function getCharacterBaseParts(character: Model): CharacterBaseParts
-	local baseParts = {}
-
-	for _, descendant in character:GetDescendants() do
-		if descendant:IsA("BasePart") then
-			table.insert(baseParts, descendant)
-		end
-	end
-
-	return baseParts
-end
-
-local function getCharacterSupportDistance(
-	characterBaseParts: CharacterBaseParts,
-	rootPart: BasePart,
-	supportDirection: Vector3
-): number
-	local supportDistance = rootPart.Size:Dot(
-		Vector3.new(
-			math.abs(rootPart.CFrame.XVector:Dot(supportDirection)),
-			math.abs(rootPart.CFrame.YVector:Dot(supportDirection)),
-			math.abs(rootPart.CFrame.ZVector:Dot(supportDirection))
-		)
-	) * 0.5
-
-	for _, part in characterBaseParts do
-		supportDistance =
-			math.max(supportDistance, getPartSupportDistanceAlongDirection(rootPart, part, supportDirection))
-	end
-
-	return supportDistance
-end
-
-local function getInputAxis(positiveKey: Enum.KeyCode, negativeKey: Enum.KeyCode): number
-	local axis = 0
-	if UserInputService:IsKeyDown(positiveKey) then
-		axis += 1
-	end
-	if UserInputService:IsKeyDown(negativeKey) then
-		axis -= 1
-	end
-	return axis
-end
-
-local function getDesiredMoveDirection(surfaceUp: Vector3): Vector3
-	local inputX = getInputAxis(Enum.KeyCode.D, Enum.KeyCode.A) + getInputAxis(Enum.KeyCode.Right, Enum.KeyCode.Left)
-	local inputY = getInputAxis(Enum.KeyCode.W, Enum.KeyCode.S) + getInputAxis(Enum.KeyCode.Up, Enum.KeyCode.Down)
-
-	local inputVector = Vector2.new(inputX, inputY)
-	if inputVector.Magnitude <= 0 then
-		return Vector3.zero
-	end
-
-	if inputVector.Magnitude > 1 then
-		inputVector = inputVector.Unit
-	end
-
-	local currentCamera = Workspace.CurrentCamera
-	if currentCamera == nil then
-		return Vector3.zero
-	end
-
-	local cameraForward =
-		PlanetMath.getPlanarDirection(surfaceUp, currentCamera.CFrame.LookVector, currentCamera.CFrame.UpVector)
-	local cameraRight =
-		PlanetMath.getPlanarDirection(surfaceUp, currentCamera.CFrame.RightVector, cameraForward:Cross(surfaceUp))
-	local desiredMove = cameraRight * inputVector.X + cameraForward * inputVector.Y
-	if desiredMove.Magnitude <= 0.01 then
-		return Vector3.zero
-	end
-
-	return desiredMove.Unit
-end
-
-local function translateCharacterWithPlanet(rootPart: BasePart, translationDelta: Vector3)
-	if translationDelta.Magnitude <= 0 then
-		return
-	end
-
-	rootPart.CFrame = CFrame.new(rootPart.Position + translationDelta) * (rootPart.CFrame - rootPart.Position)
+): MovementControllerUtils.GroundProbeResult
+	return MovementControllerUtils.getGroundProbeResult(
+		character,
+		rootPart,
+		surfaceUp,
+		characterSupportDistance,
+		raycastParams,
+		LocomotionConstants.groundProbeLength,
+		GROUND_PROBE_START_HEIGHT,
+		GROUND_NORMAL_THRESHOLD,
+		LocomotionConstants.groundedDistanceBuffer
+	)
 end
 
 local PlanetLocomotionController = {}
@@ -234,8 +84,8 @@ function PlanetLocomotionController.attach(character: Model): (() -> ())?
 
 	humanoid.AutoRotate = false
 	humanoid.PlatformStand = true
-	setLocomotionState(character, LocomotionState.Idle)
-	local characterBaseParts = getCharacterBaseParts(character)
+	MovementControllerUtils.setLocomotionState(character, LocomotionState.Idle)
+	local characterBaseParts = MovementControllerUtils.getCharacterBaseParts(character)
 
 	local gravAttachment = Instance.new("Attachment")
 	gravAttachment.Name = GRAVITY_ATTACHMENT_NAME
@@ -268,10 +118,7 @@ function PlanetLocomotionController.attach(character: Model): (() -> ())?
 	moveVelocity.Enabled = false
 	moveVelocity.Parent = rootPart
 
-	local groundRaycastParams = RaycastParams.new()
-	groundRaycastParams.FilterType = Enum.RaycastFilterType.Exclude
-	groundRaycastParams.FilterDescendantsInstances = { character }
-	groundRaycastParams.IgnoreWater = true
+	local groundRaycastParams = MovementControllerUtils.createCharacterRaycastParams(character)
 
 	local groundDebugSphere = createGroundDebugSphere()
 
@@ -296,7 +143,7 @@ function PlanetLocomotionController.attach(character: Model): (() -> ())?
 			gravForce.Force = Vector3.zero
 			moveVelocity.PlaneVelocity = Vector2.zero
 			moveVelocity.Enabled = false
-			setLocomotionState(character, LocomotionState.Idle)
+			MovementControllerUtils.setLocomotionState(character, LocomotionState.Idle)
 			return
 		end
 
@@ -307,7 +154,7 @@ function PlanetLocomotionController.attach(character: Model): (() -> ())?
 		if activePlanet ~= nil then
 			local currentPlanetCenter = PlanetMath.getPlanetCenter(activePlanet)
 			if lastPlanetName == activePlanet.name and lastPlanetCenter ~= nil then
-				translateCharacterWithPlanet(rootPart, currentPlanetCenter - lastPlanetCenter)
+				MovementControllerUtils.translateCharacterWithPlanet(rootPart, currentPlanetCenter - lastPlanetCenter)
 				position = rootPart.Position
 			end
 			local radialDistance = (position - currentPlanetCenter).Magnitude
@@ -316,7 +163,7 @@ function PlanetLocomotionController.attach(character: Model): (() -> ())?
 				gravForce.Force = Vector3.zero
 				moveVelocity.PlaneVelocity = Vector2.zero
 				moveVelocity.Enabled = false
-				setLocomotionState(character, LocomotionState.Idle)
+				MovementControllerUtils.setLocomotionState(character, LocomotionState.Idle)
 				return
 			end
 
@@ -324,7 +171,8 @@ function PlanetLocomotionController.attach(character: Model): (() -> ())?
 			gravForce.Force = gravDir * activePlanet.surfaceGravity * mass
 
 			local surfaceUp = -gravDir
-			local characterSupportDistance = getCharacterSupportDistance(characterBaseParts, rootPart, surfaceUp)
+			local characterSupportDistance =
+				MovementControllerUtils.getCharacterSupportDistance(characterBaseParts, rootPart, surfaceUp)
 			local minSurfaceDistance = activePlanet.radius + characterSupportDistance
 			if radialDistance < minSurfaceDistance then
 				local tangentVelocity = rootPart.AssemblyLinearVelocity
@@ -337,7 +185,7 @@ function PlanetLocomotionController.attach(character: Model): (() -> ())?
 				radialDistance = minSurfaceDistance
 			end
 
-			local moveDirection = getDesiredMoveDirection(surfaceUp)
+			local moveDirection = MovementControllerUtils.getDesiredPlanarMoveDirection(surfaceUp, PlanetMath)
 			local fallbackVector = Workspace.CurrentCamera and Workspace.CurrentCamera.CFrame.LookVector
 				or Vector3.new(0, 0, -1)
 			if lastPlanetName == activePlanet.name then
@@ -399,7 +247,7 @@ function PlanetLocomotionController.attach(character: Model): (() -> ())?
 				end
 			end
 
-			setLocomotionState(character, locomotionState)
+			MovementControllerUtils.setLocomotionState(character, locomotionState)
 
 			if queuedJump and canJumpFromProbe then
 				local jumpSpeed = math.sqrt(2 * activePlanet.surfaceGravity * LocomotionConstants.jumpHeight)
@@ -412,11 +260,16 @@ function PlanetLocomotionController.attach(character: Model): (() -> ())?
 			gravForce.Force = Vector3.zero
 			moveVelocity.PlaneVelocity = Vector2.zero
 			moveVelocity.Enabled = false
-			updateGroundDebugSphere(groundDebugSphere, rootPart.Position, getGroundProbeRadius(rootPart), false)
+			updateGroundDebugSphere(
+				groundDebugSphere,
+				rootPart.Position,
+				MovementControllerUtils.getGroundProbeRadius(rootPart),
+				false
+			)
 			if rootPart.AssemblyLinearVelocity.Magnitude > 1 then
-				setLocomotionState(character, LocomotionState.Fall)
+				MovementControllerUtils.setLocomotionState(character, LocomotionState.Fall)
 			else
-				setLocomotionState(character, LocomotionState.Idle)
+				MovementControllerUtils.setLocomotionState(character, LocomotionState.Idle)
 			end
 			queuedJump = false
 		end

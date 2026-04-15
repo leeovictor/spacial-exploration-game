@@ -12,6 +12,19 @@ local LocomotionConstants = {
 	flyProbeLength = 28,
 	flyToggleDoubleTapWindow = 0.3,
 	flyHeightEpsilon = 0.25,
+	cruiseSpeed = 110,
+	cruiseMinSpeed = 0,
+	cruiseMaxSpeed = 500,
+	cruiseAcceleration = 28,
+	cruiseBoostAcceleration = 72,
+	cruiseDeceleration = 40,
+	cruiseMaxForce = 120000,
+	cruiseVelocityCorrectionGain = 3.5,
+	cruiseLandingConfirmTime = 0.15,
+	cruiseGroundProbeLength = 14,
+	cruiseGroundProbeStartHeight = 2.5,
+	cruiseGroundProbeRadiusScale = 1.8,
+	cruiseLandingVerticalSpeedThreshold = 4,
 }
 
 return LocomotionConstants

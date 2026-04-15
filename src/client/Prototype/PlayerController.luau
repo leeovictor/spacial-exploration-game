@@ -5,20 +5,22 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 
 local LocomotionConstants = require(ReplicatedStorage.Shared.Prototype.LocomotionConstants)
+local MovementMode = require(ReplicatedStorage.Shared.Prototype.MovementMode)
 local CharacterAnimationController = require(script.Parent.CharacterAnimationController)
+local CruiseController = require(script.Parent.CruiseController)
 local FlyController = require(script.Parent.FlyController)
 local PlanetLocomotionController = require(script.Parent.PlanetLocomotionController)
 
 local PlayerController = {}
 
-type MovementMode = "planet" | "fly"
+type MovementModeName = "planet" | "fly" | "cruise"
 
 function PlayerController.start()
 	local player = Players.LocalPlayer
 	local activeCharacter: Model? = nil
 	local activeAnimationCleanup: (() -> ())? = nil
 	local activeMovementCleanup: (() -> ())? = nil
-	local activeMovementMode: MovementMode = "planet"
+	local activeMovementMode: MovementModeName = MovementMode.Planet
 	local lastSpaceTapAt = 0
 
 	local function cleanupMovementController()
@@ -37,7 +39,7 @@ function PlayerController.start()
 		end
 	end
 
-	local function applyMovementMode(mode: MovementMode)
+	local function applyMovementMode(mode: MovementModeName)
 		activeMovementMode = mode
 		cleanupMovementController()
 
@@ -45,8 +47,28 @@ function PlayerController.start()
 			return
 		end
 
-		if mode == "fly" then
-			activeMovementCleanup = FlyController.attach(activeCharacter)
+		activeCharacter:SetAttribute(MovementMode.attributeName, mode)
+
+		if mode == MovementMode.Fly then
+			activeMovementCleanup = FlyController.attach(activeCharacter, {
+				onCruiseRequested = function()
+					if activeMovementMode ~= MovementMode.Fly then
+						return
+					end
+
+					applyMovementMode(MovementMode.Cruise)
+				end,
+			})
+		elseif mode == MovementMode.Cruise then
+			activeMovementCleanup = CruiseController.attach(activeCharacter, {
+				onLandingDetected = function()
+					if activeMovementMode ~= MovementMode.Cruise then
+						return
+					end
+
+					applyMovementMode(MovementMode.Planet)
+				end,
+			})
 		else
 			activeMovementCleanup = PlanetLocomotionController.attach(activeCharacter)
 		end
@@ -55,7 +77,7 @@ function PlayerController.start()
 	local function onCharacterAdded(character: Model)
 		cleanupAllControllers()
 		activeCharacter = character
-		activeMovementMode = "planet"
+		activeMovementMode = MovementMode.Planet
 		lastSpaceTapAt = 0
 
 		activeAnimationCleanup = CharacterAnimationController.attach(character)
@@ -64,8 +86,11 @@ function PlayerController.start()
 
 	local function onCharacterRemoving()
 		cleanupAllControllers()
+		if activeCharacter ~= nil then
+			activeCharacter:SetAttribute(MovementMode.attributeName, nil)
+		end
 		activeCharacter = nil
-		activeMovementMode = "planet"
+		activeMovementMode = MovementMode.Planet
 		lastSpaceTapAt = 0
 	end
 
@@ -92,8 +117,14 @@ function PlayerController.start()
 		end
 
 		local now = os.clock()
+		if activeMovementMode == MovementMode.Cruise then
+			return
+		end
+
 		if now - lastSpaceTapAt <= LocomotionConstants.flyToggleDoubleTapWindow then
-			local nextMode: MovementMode = if activeMovementMode == "planet" then "fly" else "planet"
+			local nextMode: MovementModeName = if activeMovementMode == MovementMode.Planet
+				then MovementMode.Fly
+				else MovementMode.Planet
 			applyMovementMode(nextMode)
 			lastSpaceTapAt = 0
 			return

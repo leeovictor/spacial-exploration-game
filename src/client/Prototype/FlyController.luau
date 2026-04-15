@@ -8,127 +8,12 @@ local Workspace = game:GetService("Workspace")
 local PlanetMath = require(ReplicatedStorage.Shared.Prototype.Math.PlanetMath)
 local LocomotionConstants = require(ReplicatedStorage.Shared.Prototype.LocomotionConstants)
 local LocomotionState = require(ReplicatedStorage.Shared.Prototype.LocomotionState)
+local MovementControllerUtils = require(script.Parent.MovementControllerUtils)
 
 local FLY_ATTACHMENT_NAME = "PlanetFlyAttachment"
 local FLY_ORIENTATION_NAME = "PlanetFlyOrientation"
 local FLY_VELOCITY_NAME = "PlanetFlyVelocity"
 local FLY_DEBUG_SPHERE_NAME = "PlanetFlightProbeDebug"
-
-type GroundProbeResult = {
-	hasHit: boolean,
-	distance: number?,
-	origin: Vector3,
-	radius: number,
-}
-
-type CharacterBaseParts = { BasePart }
-
-local function setLocomotionState(character: Model, stateName: string)
-	if character:GetAttribute(LocomotionState.attributeName) == stateName then
-		return
-	end
-
-	character:SetAttribute(LocomotionState.attributeName, stateName)
-end
-
-local function getPartSupportDistanceAlongDirection(
-	rootPart: BasePart,
-	part: BasePart,
-	supportDirection: Vector3
-): number
-	local halfSize = part.Size * 0.5
-	local axisX = part.CFrame.XVector
-	local axisY = part.CFrame.YVector
-	local axisZ = part.CFrame.ZVector
-	local relativePosition = part.Position - rootPart.Position
-
-	return -relativePosition:Dot(supportDirection)
-		+ math.abs(axisX:Dot(supportDirection)) * halfSize.X
-		+ math.abs(axisY:Dot(supportDirection)) * halfSize.Y
-		+ math.abs(axisZ:Dot(supportDirection)) * halfSize.Z
-end
-
-local function getCharacterBaseParts(character: Model): CharacterBaseParts
-	local baseParts = {}
-
-	for _, descendant in character:GetDescendants() do
-		if descendant:IsA("BasePart") then
-			table.insert(baseParts, descendant)
-		end
-	end
-
-	return baseParts
-end
-
-local function getCharacterSupportDistance(
-	characterBaseParts: CharacterBaseParts,
-	rootPart: BasePart,
-	supportDirection: Vector3
-): number
-	local supportDistance = rootPart.Size:Dot(
-		Vector3.new(
-			math.abs(rootPart.CFrame.XVector:Dot(supportDirection)),
-			math.abs(rootPart.CFrame.YVector:Dot(supportDirection)),
-			math.abs(rootPart.CFrame.ZVector:Dot(supportDirection))
-		)
-	) * 0.5
-
-	for _, part in characterBaseParts do
-		supportDistance =
-			math.max(supportDistance, getPartSupportDistanceAlongDirection(rootPart, part, supportDirection))
-	end
-
-	return supportDistance
-end
-
-local function getInputAxis(positiveKey: Enum.KeyCode, negativeKey: Enum.KeyCode): number
-	local axis = 0
-	if UserInputService:IsKeyDown(positiveKey) then
-		axis += 1
-	end
-	if UserInputService:IsKeyDown(negativeKey) then
-		axis -= 1
-	end
-	return axis
-end
-
-local function getDesiredMoveDirection(surfaceUp: Vector3): Vector3
-	local inputX = getInputAxis(Enum.KeyCode.D, Enum.KeyCode.A) + getInputAxis(Enum.KeyCode.Right, Enum.KeyCode.Left)
-	local inputY = getInputAxis(Enum.KeyCode.W, Enum.KeyCode.S) + getInputAxis(Enum.KeyCode.Up, Enum.KeyCode.Down)
-
-	local inputVector = Vector2.new(inputX, inputY)
-	if inputVector.Magnitude <= 0 then
-		return Vector3.zero
-	end
-
-	if inputVector.Magnitude > 1 then
-		inputVector = inputVector.Unit
-	end
-
-	local currentCamera = Workspace.CurrentCamera
-	if currentCamera == nil then
-		return Vector3.zero
-	end
-
-	local cameraForward =
-		PlanetMath.getPlanarDirection(surfaceUp, currentCamera.CFrame.LookVector, currentCamera.CFrame.UpVector)
-	local cameraRight =
-		PlanetMath.getPlanarDirection(surfaceUp, currentCamera.CFrame.RightVector, cameraForward:Cross(surfaceUp))
-	local desiredMove = cameraRight * inputVector.X + cameraForward * inputVector.Y
-	if desiredMove.Magnitude <= 0.01 then
-		return Vector3.zero
-	end
-
-	return desiredMove.Unit
-end
-
-local function translateCharacterWithPlanet(rootPart: BasePart, translationDelta: Vector3)
-	if translationDelta.Magnitude <= 0 then
-		return
-	end
-
-	rootPart.CFrame = CFrame.new(rootPart.Position + translationDelta) * (rootPart.CFrame - rootPart.Position)
-end
 
 local function createFlightDebugSphere(): Part?
 	if not RunService:IsStudio() then
@@ -168,43 +53,13 @@ local function updateFlightDebugSphere(
 	debugSphere.Transparency = if isWithinFlightBand then 0.75 else 0.55
 end
 
-local function getGroundProbeRadius(rootPart: BasePart): number
-	return math.max(math.min(rootPart.Size.X, rootPart.Size.Z) * 0.35, 1.5)
-end
-
-local function getGroundProbeResult(
-	character: Model,
-	rootPart: BasePart,
-	surfaceUp: Vector3,
-	characterSupportDistance: number,
-	raycastParams: RaycastParams
-): GroundProbeResult
-	local probeRadius = getGroundProbeRadius(rootPart)
-	local probeOriginOffset = math.max(characterSupportDistance - probeRadius, 0)
-	local probeOrigin = rootPart.Position - surfaceUp * probeOriginOffset
-	local probeDirection = -surfaceUp * LocomotionConstants.flyProbeLength
-	local probeResult = Workspace:Spherecast(probeOrigin, probeRadius, probeDirection, raycastParams)
-
-	if probeResult == nil or probeResult.Instance:IsDescendantOf(character) then
-		return {
-			hasHit = false,
-			distance = nil,
-			origin = probeOrigin,
-			radius = probeRadius,
-		}
-	end
-
-	return {
-		hasHit = true,
-		distance = probeResult.Distance,
-		origin = probeOrigin,
-		radius = probeRadius,
-	}
-end
-
 local FlyController = {}
 
-function FlyController.attach(character: Model): (() -> ())?
+type FlyControllerOptions = {
+	onCruiseRequested: (() -> ())?,
+}
+
+function FlyController.attach(character: Model, options: FlyControllerOptions?): (() -> ())?
 	local rootPart = character:WaitForChild("HumanoidRootPart", 5) :: BasePart?
 	local humanoid = character:WaitForChild("Humanoid", 5) :: Humanoid?
 	if rootPart == nil or humanoid == nil then
@@ -213,8 +68,9 @@ function FlyController.attach(character: Model): (() -> ())?
 
 	humanoid.AutoRotate = false
 	humanoid.PlatformStand = true
-	setLocomotionState(character, LocomotionState.Idle)
-	local characterBaseParts = getCharacterBaseParts(character)
+	MovementControllerUtils.setLocomotionState(character, LocomotionState.Idle)
+	local characterBaseParts = MovementControllerUtils.getCharacterBaseParts(character)
+	local onCruiseRequested = if options ~= nil then options.onCruiseRequested else nil
 
 	local flyAttachment = Instance.new("Attachment")
 	flyAttachment.Name = FLY_ATTACHMENT_NAME
@@ -240,14 +96,12 @@ function FlyController.attach(character: Model): (() -> ())?
 	flyVelocity.Enabled = true
 	flyVelocity.Parent = rootPart
 
-	local groundRaycastParams = RaycastParams.new()
-	groundRaycastParams.FilterType = Enum.RaycastFilterType.Exclude
-	groundRaycastParams.FilterDescendantsInstances = { character }
-	groundRaycastParams.IgnoreWater = true
+	local groundRaycastParams = MovementControllerUtils.createCharacterRaycastParams(character)
 
 	local debugSphere = createFlightDebugSphere()
 	local lastPlanetName: string? = nil
 	local lastPlanetCenter: Vector3? = nil
+	local cruiseRequested = false
 	local tangentForward = PlanetMath.getPlanarDirection(
 		PlanetMath.getSurfaceUp(rootPart.Position),
 		rootPart.CFrame.LookVector,
@@ -262,7 +116,7 @@ function FlyController.attach(character: Model): (() -> ())?
 		if humanoid.Health <= 0 then
 			flyVelocity.VectorVelocity = Vector3.zero
 			flyVelocity.Enabled = false
-			setLocomotionState(character, LocomotionState.Idle)
+			MovementControllerUtils.setLocomotionState(character, LocomotionState.Idle)
 			return
 		end
 
@@ -272,11 +126,16 @@ function FlyController.attach(character: Model): (() -> ())?
 			lastPlanetCenter = nil
 			flyVelocity.VectorVelocity = Vector3.zero
 			flyVelocity.Enabled = false
-			updateFlightDebugSphere(debugSphere, rootPart.Position, getGroundProbeRadius(rootPart), false)
+			updateFlightDebugSphere(
+				debugSphere,
+				rootPart.Position,
+				MovementControllerUtils.getGroundProbeRadius(rootPart),
+				false
+			)
 			if rootPart.AssemblyLinearVelocity.Magnitude > 1 then
-				setLocomotionState(character, LocomotionState.Fall)
+				MovementControllerUtils.setLocomotionState(character, LocomotionState.Fall)
 			else
-				setLocomotionState(character, LocomotionState.Idle)
+				MovementControllerUtils.setLocomotionState(character, LocomotionState.Idle)
 			end
 			return
 		end
@@ -284,13 +143,23 @@ function FlyController.attach(character: Model): (() -> ())?
 		local surfaceUp = PlanetMath.getSurfaceUp(rootPart.Position)
 		local currentPlanetCenter = PlanetMath.getPlanetCenter(activePlanet)
 		if lastPlanetName == activePlanet.name and lastPlanetCenter ~= nil then
-			translateCharacterWithPlanet(rootPart, currentPlanetCenter - lastPlanetCenter)
+			MovementControllerUtils.translateCharacterWithPlanet(rootPart, currentPlanetCenter - lastPlanetCenter)
 		end
 		local position = rootPart.Position
 		surfaceUp = PlanetMath.getSurfaceUp(position)
-		local characterSupportDistance = getCharacterSupportDistance(characterBaseParts, rootPart, surfaceUp)
-		local groundProbe =
-			getGroundProbeResult(character, rootPart, surfaceUp, characterSupportDistance, groundRaycastParams)
+		local characterSupportDistance =
+			MovementControllerUtils.getCharacterSupportDistance(characterBaseParts, rootPart, surfaceUp)
+		local groundProbe = MovementControllerUtils.getGroundProbeResult(
+			character,
+			rootPart,
+			surfaceUp,
+			characterSupportDistance,
+			groundRaycastParams,
+			LocomotionConstants.flyProbeLength,
+			0,
+			-1,
+			0
+		)
 		local currentHeight = groundProbe.distance
 		if currentHeight == nil then
 			currentHeight =
@@ -309,7 +178,7 @@ function FlyController.attach(character: Model): (() -> ())?
 			currentHeight = LocomotionConstants.flyMaxHeight
 		end
 
-		local moveDirection = getDesiredMoveDirection(surfaceUp)
+		local moveDirection = MovementControllerUtils.getDesiredPlanarMoveDirection(surfaceUp, PlanetMath)
 		local fallbackVector = Workspace.CurrentCamera and Workspace.CurrentCamera.CFrame.LookVector
 			or Vector3.new(0, 0, -1)
 		if lastPlanetName == activePlanet.name then
@@ -361,6 +230,19 @@ function FlyController.attach(character: Model): (() -> ())?
 			+ surfaceUp * desiredVerticalSpeed
 			+ PlanetMath.getRotationalSurfaceVelocity(activePlanet, rootPart.Position)
 		flyVelocity.Enabled = true
+
+		if not cruiseRequested and onCruiseRequested ~= nil then
+			local atFlyCeiling = currentHeight
+				>= LocomotionConstants.flyMaxHeight - LocomotionConstants.flyHeightEpsilon
+			local moveInput = MovementControllerUtils.getMoveInputVector()
+			local wantsCruise = atFlyCeiling and UserInputService:IsKeyDown(Enum.KeyCode.Space) and moveInput.Y > 0
+			if wantsCruise then
+				cruiseRequested = true
+				onCruiseRequested()
+				return
+			end
+		end
+
 		updateFlightDebugSphere(
 			debugSphere,
 			groundProbe.origin,
@@ -374,7 +256,7 @@ function FlyController.attach(character: Model): (() -> ())?
 		elseif desiredHorizontalVelocity.Magnitude > 0.01 or desiredVerticalSpeed < -0.01 then
 			locomotionState = LocomotionState.Fall
 		end
-		setLocomotionState(character, locomotionState)
+		MovementControllerUtils.setLocomotionState(character, locomotionState)
 	end)
 
 	local cleaned = false

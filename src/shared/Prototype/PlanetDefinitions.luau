@@ -38,12 +38,12 @@ local planets: { PlanetDef } = {
 		center = Vector3.new(0, -300, 0),
 		radius = 300,
 		surfaceGravity = 196.2, -- matches default Roblox Workspace.Gravity for familiar feel
-		influenceRadius = 300 * 2,
+		influenceRadius = 300 * 10,
 		rotationAxis = PlanetDefinitions.axisAngleToRotationAxis(math.rad(8), math.rad(10)),
 		angularSpeed = PlanetDefinitions.secondsPerRotationToAngularSpeed(300), -- 300s per rotation, fairly slow but noticeable
-		orbitCenter = Vector3.new(-1800, -300, 0),
+		orbitCenter = Vector3.new(-300 * 20, -300, 0),
 		orbitAxis = Vector3.yAxis,
-		orbitAngularSpeed = PlanetDefinitions.secondsPerRotationToAngularSpeed(60 * 40),
+		orbitAngularSpeed = PlanetDefinitions.secondsPerRotationToAngularSpeed(60 * 40), -- 40 minutes per orbit, just to make it noticeable
 	},
 }
 

@@ -20,6 +20,9 @@ type PlanetDef = {
 
 local EPSILON = 0.01
 local MIN_ROTATION_AXIS_MAGNITUDE = 0.0001
+local HOURS_PER_DAY = 24
+local HALF_DAY_HOURS = HOURS_PER_DAY * 0.5
+local ROBLOX_SOLAR_TILT_DEGREES = 23.5
 
 local PlanetMath = {}
 
@@ -166,6 +169,28 @@ function PlanetMath.rotateVectorWithPlanet(planet: PlanetDef, vector: Vector3, d
 	end
 
 	return PlanetMath.getPlanetRotationDelta(planet, deltaTime):VectorToWorldSpace(vector)
+end
+
+function PlanetMath.getLightingClockTimeAndGeographicLatitude(
+	planetCenter: Vector3,
+	starPosition: Vector3
+): (number, number)
+	local sunOffset = starPosition - planetCenter
+	if sunOffset.Magnitude <= EPSILON then
+		return HALF_DAY_HOURS, ROBLOX_SOLAR_TILT_DEGREES
+	end
+
+	local sunDirection = sunOffset.Unit
+	local horizontalMagnitude = math.sqrt(sunDirection.X * sunDirection.X + sunDirection.Y * sunDirection.Y)
+	local geographicLatitude = math.deg(math.atan2(sunDirection.Z, horizontalMagnitude)) + ROBLOX_SOLAR_TILT_DEGREES
+	local hourAngle = math.atan2(-sunDirection.X, sunDirection.Y)
+	local clockTime = math.fmod(HALF_DAY_HOURS + hourAngle * HALF_DAY_HOURS / math.pi, HOURS_PER_DAY)
+
+	if clockTime < 0 then
+		clockTime += HOURS_PER_DAY
+	end
+
+	return clockTime, geographicLatitude
 end
 
 return PlanetMath
