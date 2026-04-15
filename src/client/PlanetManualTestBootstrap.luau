@@ -35,7 +35,7 @@ local function createPlanetFromDefinition(planetDefinition)
 		rotationAxis = planetDefinition.rotationAxis,
 		angularSpeed = planetDefinition.angularSpeed,
 		debugShowRotationAxis = true,
-		debugShowEquator = true,
+		debugShowEquator = false,
 	})
 
 	print(

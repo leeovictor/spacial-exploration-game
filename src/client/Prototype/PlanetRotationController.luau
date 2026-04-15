@@ -231,7 +231,9 @@ local function refreshPlanetStates()
 				orbitReferenceMarker = if existingState ~= nil then existingState.orbitReferenceMarker else nil,
 				orbitSegmentParts = if existingState ~= nil then existingState.orbitSegmentParts else nil,
 			}
-			updateOrbitDebug(nextState)
+			if false then
+				updateOrbitDebug(nextState)
+			end
 			nextStates[planetModel] = nextState
 		end
 	end
