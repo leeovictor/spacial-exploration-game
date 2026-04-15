@@ -24,12 +24,49 @@ type PlanetRotationState = {
 	planet: PlanetDef,
 	orbitAxisPart: Part?,
 	orbitReferenceMarker: Part?,
+	orbitSegmentParts: { Part }?,
 }
 
 local heartbeatConnection: RBXScriptConnection? = nil
 local planetStates: { [Model]: PlanetRotationState } = {}
 
+local ORBIT_SEGMENT_COUNT = 72
+
 local PlanetRotationController = {}
+
+local function destroyParts(parts: { Part }?)
+	if parts == nil then
+		return
+	end
+
+	for _, part in parts do
+		if part.Parent ~= nil then
+			part:Destroy()
+		end
+	end
+end
+
+local function getOrbitDebugColor(planet: PlanetDef): Color3
+	local hash = 0
+
+	for index = 1, #planet.name do
+		hash = (hash + string.byte(planet.name, index) * index) % 360
+	end
+
+	return Color3.fromHSV(hash / 360, 0.7, 1)
+end
+
+local function getOrbitPlaneBasis(orbitAxis: Vector3): (Vector3, Vector3)
+	local tangent = orbitAxis:Cross(Vector3.yAxis)
+	if tangent.Magnitude <= 0.001 then
+		tangent = orbitAxis:Cross(Vector3.xAxis)
+	end
+
+	tangent = tangent.Unit
+	local bitangent = orbitAxis:Cross(tangent).Unit
+
+	return tangent, bitangent
+end
 
 local function createOrbitAxisPart(planet: PlanetDef): Part?
 	if planet.orbitCenter == nil then
@@ -83,6 +120,54 @@ local function createOrbitReferenceMarker(planet: PlanetDef): Part?
 	return marker
 end
 
+local function createOrbitSegmentParts(planet: PlanetDef): { Part }?
+	if planet.orbitCenter == nil then
+		return nil
+	end
+
+	local orbitCenter = PlanetMath.getOrbitCenter(planet)
+	local orbitAxis = PlanetMath.getOrbitAxis(planet)
+	local orbitRadius = (planet.center - orbitCenter).Magnitude
+	if orbitRadius <= 0.001 then
+		return nil
+	end
+
+	local tangent, bitangent = getOrbitPlaneBasis(orbitAxis)
+	local segmentParts = table.create(ORBIT_SEGMENT_COUNT)
+	local thickness = math.max(planet.radius * 0.02, 0.6)
+	local color = getOrbitDebugColor(planet)
+
+	for segmentIndex = 1, ORBIT_SEGMENT_COUNT do
+		local startAngle = ((segmentIndex - 1) / ORBIT_SEGMENT_COUNT) * math.pi * 2
+		local endAngle = (segmentIndex / ORBIT_SEGMENT_COUNT) * math.pi * 2
+		local startOffset = tangent * (math.cos(startAngle) * orbitRadius)
+			+ bitangent * (math.sin(startAngle) * orbitRadius)
+		local endOffset = tangent * (math.cos(endAngle) * orbitRadius) + bitangent * (math.sin(endAngle) * orbitRadius)
+		local startPoint = orbitCenter + startOffset
+		local endPoint = orbitCenter + endOffset
+		local segmentVector = endPoint - startPoint
+
+		local segmentPart = Instance.new("Part")
+		segmentPart.Name = string.format("%sOrbitSegmentDebug%02d", planet.name, segmentIndex)
+		segmentPart.Anchored = true
+		segmentPart.CanCollide = false
+		segmentPart.CanQuery = false
+		segmentPart.CanTouch = false
+		segmentPart.CastShadow = false
+		segmentPart.Locked = true
+		segmentPart.Material = Enum.Material.Neon
+		segmentPart.Color = color
+		segmentPart.Transparency = 0.35
+		segmentPart.Size = Vector3.new(thickness, thickness, segmentVector.Magnitude)
+		segmentPart.CFrame = CFrame.lookAt(startPoint:Lerp(endPoint, 0.5), endPoint, orbitAxis)
+		segmentPart.Parent = Workspace
+
+		table.insert(segmentParts, segmentPart)
+	end
+
+	return segmentParts
+end
+
 local function updateOrbitDebug(state: PlanetRotationState)
 	if state.planet.orbitCenter == nil then
 		if state.orbitAxisPart ~= nil and state.orbitAxisPart.Parent ~= nil then
@@ -91,8 +176,10 @@ local function updateOrbitDebug(state: PlanetRotationState)
 		if state.orbitReferenceMarker ~= nil and state.orbitReferenceMarker.Parent ~= nil then
 			state.orbitReferenceMarker:Destroy()
 		end
+		destroyParts(state.orbitSegmentParts)
 		state.orbitAxisPart = nil
 		state.orbitReferenceMarker = nil
+		state.orbitSegmentParts = nil
 		return
 	end
 
@@ -119,6 +206,16 @@ local function updateOrbitDebug(state: PlanetRotationState)
 		state.orbitReferenceMarker.CFrame = CFrame.new(orbitCenter)
 		state.orbitReferenceMarker.Parent = Workspace
 	end
+
+	if state.orbitSegmentParts == nil then
+		state.orbitSegmentParts = createOrbitSegmentParts(state.planet)
+	end
+
+	if state.orbitSegmentParts ~= nil then
+		for _, segmentPart in state.orbitSegmentParts do
+			segmentPart.Parent = Workspace
+		end
+	end
 end
 
 local function refreshPlanetStates()
@@ -132,6 +229,7 @@ local function refreshPlanetStates()
 				planet = planet,
 				orbitAxisPart = if existingState ~= nil then existingState.orbitAxisPart else nil,
 				orbitReferenceMarker = if existingState ~= nil then existingState.orbitReferenceMarker else nil,
+				orbitSegmentParts = if existingState ~= nil then existingState.orbitSegmentParts else nil,
 			}
 			updateOrbitDebug(nextState)
 			nextStates[planetModel] = nextState
@@ -146,6 +244,7 @@ local function refreshPlanetStates()
 			if state.orbitReferenceMarker ~= nil and state.orbitReferenceMarker.Parent ~= nil then
 				state.orbitReferenceMarker:Destroy()
 			end
+			destroyParts(state.orbitSegmentParts)
 		end
 	end
 
