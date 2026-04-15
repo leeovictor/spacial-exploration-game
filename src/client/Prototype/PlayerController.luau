@@ -13,7 +13,7 @@ local PlanetLocomotionController = require(script.Parent.PlanetLocomotionControl
 
 local PlayerController = {}
 
-type MovementModeName = "planet" | "fly" | "cruise"
+type MovementModeName = string
 
 function PlayerController.start()
 	local player = Players.LocalPlayer
