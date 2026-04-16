@@ -120,6 +120,7 @@ function CameraController.start()
 		local previousFieldOfView = nil :: number?
 		local pitch = math.rad(20)
 		local cameraDistance = CAMERA_DISTANCE
+		local isMiddleMouseHeld = false
 		local planarForward = getFallbackForward(PlanetMath.getSurfaceUp(rootPart.Position))
 		local freeCameraForward = planarForward
 		local freeCameraUp = PlanetMath.getSurfaceUp(rootPart.Position)
@@ -128,18 +129,46 @@ function CameraController.start()
 		local lastMovementMode = MovementMode.Planet
 		local isBlendingFromCruise = false
 
-		local wheelConn = UserInputService.InputChanged:Connect(
+		local mouseButtonBeganConn = UserInputService.InputBegan:Connect(
 			function(input: InputObject, gameProcessedEvent: boolean)
 				if gameProcessedEvent then
 					return
 				end
 
+				if input.UserInputType == Enum.UserInputType.MouseButton3 then
+					isMiddleMouseHeld = true
+				end
+			end
+		)
+
+		local wheelConn = UserInputService.InputChanged:Connect(
+			function(input: InputObject, gameProcessedEvent: boolean)
 				if input.UserInputType == Enum.UserInputType.MouseWheel then
+					if gameProcessedEvent then
+						return
+					end
+
 					cameraDistance =
 						math.clamp(cameraDistance - input.Position.Z * 2, MIN_CAMERA_DISTANCE, MAX_CAMERA_DISTANCE)
 				end
 			end
 		)
+
+		local mouseButtonEndedConn = UserInputService.InputEnded:Connect(function(input: InputObject)
+			if input.UserInputType == Enum.UserInputType.MouseButton3 then
+				isMiddleMouseHeld = false
+			end
+		end)
+
+		local windowFocusReleasedConn = UserInputService.WindowFocusReleased:Connect(function()
+			isMiddleMouseHeld = false
+			UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+			UserInputService.MouseIconEnabled = true
+		end)
+
+		local windowFocusedConn = UserInputService.WindowFocused:Connect(function()
+			isMiddleMouseHeld = false
+		end)
 
 		RunService:BindToRenderStep(RENDER_STEP_NAME, Enum.RenderPriority.Camera.Value + 1, function(deltaTime: number)
 			if rootPart.Parent == nil then
@@ -158,10 +187,19 @@ function CameraController.start()
 			end
 
 			currentCamera.CameraType = Enum.CameraType.Scriptable
-			UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
-			UserInputService.MouseIconEnabled = false
 
 			local movementMode = getCharacterMovementMode(character)
+			if movementMode == MovementMode.Cruise then
+				UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
+				UserInputService.MouseIconEnabled = false
+			elseif isMiddleMouseHeld then
+				UserInputService.MouseBehavior = Enum.MouseBehavior.LockCurrentPosition
+				UserInputService.MouseIconEnabled = true
+			else
+				UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+				UserInputService.MouseIconEnabled = true
+			end
+
 			local targetFieldOfView = if movementMode == MovementMode.Cruise
 				then CRUISE_CAMERA_FOV
 				else DEFAULT_CAMERA_FOV
@@ -170,9 +208,10 @@ function CameraController.start()
 				1
 			)
 			local modeChanged = movementMode ~= lastMovementMode
-			local mouseDelta = UserInputService:GetMouseDelta()
+			local mouseDelta = Vector2.zero
 
 			if movementMode == MovementMode.Cruise then
+				mouseDelta = UserInputService:GetMouseDelta()
 				if modeChanged then
 					freeCameraForward, freeCameraUp = orthonormalizeBasis(
 						currentCamera.CFrame.LookVector,
@@ -231,6 +270,10 @@ function CameraController.start()
 				currentCamera.Focus = CFrame.new(focusPosition)
 				lastMovementMode = movementMode
 				return
+			end
+
+			if isMiddleMouseHeld then
+				mouseDelta = UserInputService:GetMouseDelta()
 			end
 
 			local surfaceUp = PlanetMath.getSurfaceUp(rootPart.Position)
@@ -325,8 +368,13 @@ function CameraController.start()
 			end
 			cleaned = true
 
+			mouseButtonBeganConn:Disconnect()
 			wheelConn:Disconnect()
+			mouseButtonEndedConn:Disconnect()
+			windowFocusReleasedConn:Disconnect()
+			windowFocusedConn:Disconnect()
 			RunService:UnbindFromRenderStep(RENDER_STEP_NAME)
+			isMiddleMouseHeld = false
 			UserInputService.MouseBehavior = previousMouseBehavior
 			UserInputService.MouseIconEnabled = previousMouseIconEnabled
 
