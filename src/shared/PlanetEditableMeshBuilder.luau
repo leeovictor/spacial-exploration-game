@@ -379,7 +379,7 @@ local function createFallbackPlanet(model: Model, options: PlanetBuildOptions, e
 	fallbackSphere.CanQuery = if options.canQuery ~= nil then options.canQuery else true
 	fallbackSphere.CanTouch = if options.canTouch ~= nil then options.canTouch else false
 	fallbackSphere.Material = if options.fallbackMaterial ~= nil then options.fallbackMaterial else Enum.Material.Slate
-	fallbackSphere.Color = if options.fallbackColor ~= nil then options.fallbackColor else Color3.fromRGB(82, 96, 73)
+	fallbackSphere.Color = if options.fallbackColor ~= nil then options.fallbackColor else Color3.fromRGB(245, 186, 208)
 	fallbackSphere.Transparency = if options.fallbackTransparency ~= nil then options.fallbackTransparency else 0
 	fallbackSphere.TopSurface = Enum.SurfaceType.Smooth
 	fallbackSphere.BottomSurface = Enum.SurfaceType.Smooth
@@ -387,6 +387,18 @@ local function createFallbackPlanet(model: Model, options: PlanetBuildOptions, e
 
 	model:SetAttribute("PlanetUsedEditableMeshes", false)
 	model:SetAttribute("PlanetBuildErrors", table.concat(errors, "\n"))
+end
+
+local function cleanupGeneratedPatches(patches: { PlanetPatch })
+	for _, patch in patches do
+		patch.meshPart:Destroy()
+
+		pcall(function()
+			patch.editableMesh:Destroy()
+		end)
+	end
+
+	table.clear(patches)
 end
 
 function PlanetEditableMeshBuilder.isSupported(): boolean
@@ -482,7 +494,8 @@ function PlanetEditableMeshBuilder.createPlanet(options: PlanetBuildOptions): Pl
 		end
 	end
 
-	if #patches == 0 then
+	if #errors > 0 then
+		cleanupGeneratedPatches(patches)
 		createFallbackPlanet(model, options, errors)
 
 		return {
