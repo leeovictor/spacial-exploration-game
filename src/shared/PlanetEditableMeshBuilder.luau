@@ -1,6 +1,7 @@
 --!strict
 
 local AssetService = game:GetService("AssetService")
+local RunService = game:GetService("RunService")
 
 export type PlanetBuildOptions = {
 	name: string?,
@@ -203,7 +204,7 @@ local function createModelPivot(model: Model, center: Vector3): BasePart
 end
 
 local function createRotationAxisDebug(model: Model, options: PlanetBuildOptions)
-	if options.debugShowRotationAxis ~= true then
+	if options.debugShowRotationAxis ~= true or not RunService:IsStudio() then
 		return
 	end
 

@@ -13,6 +13,7 @@ local LocomotionConstants = {
 	flyToggleDoubleTapWindow = 0.3,
 	flyHeightEpsilon = 0.25,
 	cruiseSpeed = 110,
+	cruiseVerticalSpeed = 40,
 	cruiseMinSpeed = 0,
 	cruiseMaxSpeed = 1000,
 	cruiseAcceleration = 28,

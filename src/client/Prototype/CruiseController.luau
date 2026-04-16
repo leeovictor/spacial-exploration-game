@@ -223,7 +223,28 @@ function CruiseController.attach(character: Model, options: CruiseControllerOpti
 			end
 		end
 
-		local cruiseVelocityVector = cruiseDirection * currentCruiseSpeed + strafeVelocity + inheritedVelocity
+		local verticalAxis = 0
+		if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+			verticalAxis += 1
+		end
+		if UserInputService:IsKeyDown(Enum.KeyCode.C) then
+			verticalAxis -= 1
+		end
+
+		local verticalVelocity = Vector3.zero
+		if verticalAxis ~= 0 then
+			local verticalDirection = if currentCamera ~= nil
+				then currentCamera.CFrame.UpVector
+				else rootPart.CFrame.UpVector
+			if verticalDirection.Magnitude > 0.01 then
+				verticalVelocity = verticalDirection.Unit * verticalAxis * LocomotionConstants.cruiseVerticalSpeed
+			end
+		end
+
+		local cruiseVelocityVector = cruiseDirection * currentCruiseSpeed
+			+ strafeVelocity
+			+ verticalVelocity
+			+ inheritedVelocity
 		local velocityError = cruiseVelocityVector - rootPart.AssemblyLinearVelocity
 		local desiredAcceleration = velocityError * LocomotionConstants.cruiseVelocityCorrectionGain
 		local desiredForce = desiredAcceleration * mass
