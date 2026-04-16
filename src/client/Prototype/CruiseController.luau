@@ -192,14 +192,17 @@ function CruiseController.attach(character: Model, options: CruiseControllerOpti
 		end
 
 		cruiseDirection = getCruiseForwardDirection(cruiseDirection)
+		local isBoosting = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
+			or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
+		local isAcceleratingForward = UserInputService:IsKeyDown(Enum.KeyCode.W)
+			or UserInputService:IsKeyDown(Enum.KeyCode.Up)
+			or isBoosting
 		local accelerationRate = LocomotionConstants.cruiseAcceleration
-		if
-			UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
-		then
+		if isBoosting then
 			accelerationRate = LocomotionConstants.cruiseBoostAcceleration
 		end
 
-		if UserInputService:IsKeyDown(Enum.KeyCode.W) or UserInputService:IsKeyDown(Enum.KeyCode.Up) then
+		if isAcceleratingForward then
 			currentCruiseSpeed =
 				math.min(currentCruiseSpeed + accelerationRate * deltaTime, LocomotionConstants.cruiseMaxSpeed)
 		elseif UserInputService:IsKeyDown(Enum.KeyCode.S) or UserInputService:IsKeyDown(Enum.KeyCode.Down) then
